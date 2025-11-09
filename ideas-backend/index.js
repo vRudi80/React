@@ -31,7 +31,7 @@ app.get('/api/ideas', async (req, res) => {
   }
 });
 
-// Új ötlet felvitel
+// Új állás felvitel
 app.post('/api/ideas', async (req, res) => {
   const { title } = req.body;
   if (!title || !title.trim()) {

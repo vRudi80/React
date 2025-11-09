@@ -5,7 +5,7 @@ type PhotoIdea = {
   title: string;
 };
 
-const API_BASE = 'http://localhost:4000/api';
+const API_BASE = import.meta.env.VITE_API_BASE;
 
 export default function PhotoIdeas() {
   const [ideas, setIdeas] = useState<PhotoIdea[]>([]);
@@ -25,7 +25,7 @@ export default function PhotoIdeas() {
         setIdeas(data);
       } catch (err) {
         console.error(err);
-        setError('Nem sikerült betölteni az ötleteket 😕');
+        setError('Nem sikerült betölteni az óraállásokat 😕');
       } finally {
         setLoading(false);
       }
@@ -53,7 +53,7 @@ export default function PhotoIdeas() {
       setNewIdea('');
     } catch (err) {
       console.error(err);
-      setError('Nem sikerült menteni az ötletet 😕');
+      setError('Nem sikerült menteni az óraállást 😕');
     }
   };
 
@@ -70,7 +70,7 @@ export default function PhotoIdeas() {
       setIdeas((prev) => prev.filter((idea) => idea.id !== id));
     } catch (err) {
       console.error(err);
-      setError('Nem sikerült törölni az ötletet 😕');
+      setError('Nem sikerült törölni az óraállást 😕');
     }
   };
 
@@ -86,14 +86,14 @@ export default function PhotoIdeas() {
         boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
       }}
     >
-      <h2>📷 Photo-ötletek (DB)</h2>
+      <h2>📷 Óraállások</h2>
 
       <div style={{ display: 'flex', gap: '8px', margin: '16px 0' }}>
         <input
           value={newIdea}
           onChange={(e) => setNewIdea(e.target.value)}
-          placeholder="Új fotóötlet..."
-          style={{
+          placeholder="Kw"
+           style={{
             flex: 1,
             padding: '8px 12px',
             borderRadius: '8px',
@@ -110,7 +110,7 @@ export default function PhotoIdeas() {
             cursor: 'pointer',
           }}
         >
-          Hozzáad
+          Rögzít
         </button>
       </div>
 
