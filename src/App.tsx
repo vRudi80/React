@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { 
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, 
+  CartesianGrid, Tooltip, ResponsiveContainer, Cell 
+} from 'recharts';
 import './App.css';
 
 const BACKEND_URL = "https://react-ideas-backend.onrender.com";
@@ -9,7 +12,8 @@ function App() {
   const [type, setType] = useState('Áram');
   const [value, setValue] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [filter, setFilter] = useState('Áram'); // Alapértelmezett szűrő az Áram
+  const [filter, setFilter] = useState('Áram');
+  const [viewMode, setViewMode] = useState('daily'); // 'daily' vagy 'monthly'
 
   const fetchRecords = async () => {
     try {
@@ -31,33 +35,56 @@ function App() {
       });
       setValue('');
       fetchRecords();
-    } catch (err) {
-      alert("Hiba történt a mentés során!");
-    }
+    } catch (err) { alert("Hiba a mentés során!"); }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Biztosan törölni szeretnéd ezt a bejegyzést?")) return;
+    if (!window.confirm("Biztosan törlöd?")) return;
     try {
-      const res = await fetch(`${BACKEND_URL}/api/records/${id}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        fetchRecords(); // Frissítjük a listát a törlés után
-      }
-    } catch (err) {
-      alert("Hiba történt a törlés során!");
-    }
+      const res = await fetch(`${BACKEND_URL}/api/records/${id}`, { method: 'DELETE' });
+      if (res.ok) fetchRecords();
+    } catch (err) { alert("Hiba a törlés során!"); }
   };
 
-  // Csak a szűrt rekordok megjelenítése
-  const filteredRecords = records.filter((r: any) => r.Type === filter);
+  // ADATOK ELŐKÉSZÍTÉSE
+  const currentTypeRecords = records
+    .filter((r: any) => r.Type === filter)
+    .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
 
-  // Grafikon adatok (mindig az aktuális szűrő alapján)
-  const chartData = [...filteredRecords].reverse().map((r: any) => ({
-    datum: r.FormattedDate.split(' ')[0],
+  // 1. Napi adatok a vonaldiagramhoz
+  const dailyData = [...currentTypeRecords].map((r: any) => ({
+    label: r.FormattedDate.split(' ')[0],
     ertek: parseFloat(r.Value)
   }));
+
+  // 2. Havi fogyasztás kiszámítása (Első óraállások különbsége)
+  const getMonthlyConsumption = () => {
+    const monthlyFirsts: { [key: string]: number } = {};
+    
+    currentTypeRecords.forEach((r: any) => {
+      const monthKey = r.FormattedDate.substring(0, 7); // "YYYY-MM"
+      if (!monthlyFirsts[monthKey]) {
+        monthlyFirsts[monthKey] = parseFloat(r.Value);
+      }
+    });
+
+    const months = Object.keys(monthlyFirsts).sort();
+    const consumptionData = [];
+
+    for (let i = 1; i < months.length; i++) {
+      const currentMonth = months[i];
+      const prevMonth = months[i - 1];
+      const consumption = monthlyFirsts[currentMonth] - monthlyFirsts[prevMonth];
+      
+      consumptionData.push({
+        honap: currentMonth,
+        fogyasztas: consumption > 0 ? consumption : 0 // Ne legyen negatív, ha óracsere volt
+      });
+    }
+    return consumptionData;
+  };
+
+  const monthlyData = getMonthlyConsumption();
 
   return (
     <div className="app-wrapper">
@@ -65,6 +92,7 @@ function App() {
         <h1>Rezsi Nyilvántartó</h1>
       </header>
 
+      {/* BEVITEL */}
       <section className="card main-card">
         <h2>Új mérés rögzítése</h2>
         <div className="input-row">
@@ -81,56 +109,66 @@ function App() {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div className="input-field">
-            <label>Mérőóra állása</label>
+            <label>Óraállás</label>
             <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.00" />
           </div>
         </div>
-        <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
+        <button className="btn-primary" onClick={handleSave}>Mentés</button>
       </section>
 
-      {/* SZŰRŐK */}
-      <div className="filter-bar">
-        {['Áram', 'Víz', 'Gáz'].map(f => (
-          <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>
-            {f}
-          </button>
-        ))}
+      {/* SZŰRŐK ÉS NÉZETVÁLTÓ */}
+      <div className="controls-bar">
+        <div className="filter-buttons">
+          {['Áram', 'Víz', 'Gáz'].map(f => (
+            <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>{f}</button>
+          ))}
+        </div>
+        <div className="view-toggle">
+          <button className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>Napi (Állás)</button>
+          <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi (Fogyasztás)</button>
+        </div>
       </div>
 
-      {/* GRAFIKON SZEKCIÓ */}
+      {/* GRAFIKON */}
       <section className="card chart-card">
-        <h2>{filter} fogyasztási trend</h2>
+        <h2>{filter} - {viewMode === 'daily' ? 'Mérőóra állása' : 'Havi fogyasztás'}</h2>
         <div style={{ width: '100%', height: 300 }}>
           <ResponsiveContainer>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-              <XAxis dataKey="datum" stroke="#94a3b8" fontSize={11} />
-              <YAxis stroke="#94a3b8" fontSize={11} />
-              <Tooltip 
-                contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} 
-                itemStyle={{color: '#3b82f6'}}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="ertek" 
-                stroke="#3b82f6" 
-                strokeWidth={3} 
-                dot={{r: 5, fill: '#3b82f6'}} 
-              />
-            </LineChart>
+            {viewMode === 'daily' ? (
+              <LineChart data={dailyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
+                <YAxis stroke="#94a3b8" fontSize={10} />
+                <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
+                <Line type="monotone" dataKey="ertek" stroke="#3b82f6" strokeWidth={3} dot={{r: 4}} />
+              </LineChart>
+            ) : (
+              <BarChart data={monthlyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                <XAxis dataKey="honap" stroke="#94a3b8" fontSize={10} />
+                <YAxis stroke="#94a3b8" fontSize={10} />
+                <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
+                <Bar dataKey="fogyasztas" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                   {monthlyData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={filter === 'Áram' ? '#fbbf24' : filter === 'Víz' ? '#38bdf8' : '#f87171'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            )}
           </ResponsiveContainer>
         </div>
+        {viewMode === 'monthly' && monthlyData.length === 0 && (
+          <p className="hint">Legalább két különböző hónap adata kell a fogyasztás számításához.</p>
+        )}
       </section>
 
-      {/* LISTA SZEKCIÓ */}
+      {/* LISTA */}
       <section className="list-section">
         <div className="records-grid">
-          {filteredRecords.map((rec: any) => (
+          {[...currentTypeRecords].reverse().map((rec: any) => (
             <div key={rec.Id} className={`record-item ${rec.Type}`}>
               <div className="record-info">
-                <span className="record-type">
-                  {rec.Type === 'Áram' ? '⚡' : rec.Type === 'Víz' ? '💧' : '🔥'} {rec.Type}
-                </span>
+                <span className="record-type">{rec.Type}</span>
                 <span className="record-date">📅 {rec.FormattedDate}</span>
               </div>
               <div className="record-value-container">
