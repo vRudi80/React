@@ -57,58 +57,29 @@ function App() {
     ertek: parseFloat(r.Value)
   }));
 
-  // 2. JAVÍTOTT HAVI FOGYASZTÁS LOGIKA
+  // 2. JAVÍTOTT HAVI FOGYASZTÁS LOGIKA (Óracsere kezeléssel)
   const getMonthlyConsumption = () => {
     const consumptionByMonth: { [key: string]: number } = {};
 
-    // Végig megyünk az összes sorrendbe rakott rekordon
     for (let i = 1; i < currentTypeRecords.length; i++) {
       const current = currentTypeRecords[i];
       const prev = currentTypeRecords[i - 1];
       
       const currentVal = parseFloat(current.Value);
       const prevVal = parseFloat(prev.Value);
-      const monthKey = current.FormattedDate.substring(0, 7); // A fogyasztást ahhoz a hónaphoz írjuk, amikor mértük
+      const monthKey = current.FormattedDate.substring(0, 7); // YYYY-MM
 
-      // Ha az új állás nagyobb vagy egyenlő, mint az előző, hozzáadjuk a különbséget
+      // Csak ha az új állás nagyobb (vagy egyenlő), akkor adjuk hozzá a fogyasztást
       if (currentVal >= prevVal) {
         const diff = currentVal - prevVal;
         consumptionByMonth[monthKey] = (consumptionByMonth[monthKey] || 0) + diff;
-      } else {
-        // ÓRACSERE ESETÉN: 
-        // Itt a különbséget nem tudjuk pontosan (hacsak nem rögzítetted a régi óra utolsó állását 0-val),
-        // ezért ezt a negatív ugrást egyszerűen figyelmen kívül hagyjuk.
-        // A számlálás a következő rögzítéstől indul újra a 0-ról.
-        console.log(`Óracsere észlelve: ${prevVal} -> ${currentVal}`);
       }
-    };
+    }
 
-    // Átalakítás a grafikonnak megfelelő formátumba
     return Object.keys(consumptionByMonth).sort().map(month => ({
       honap: month,
       fogyasztas: Math.round(consumptionByMonth[month] * 100) / 100
     }));
-  };
-
-    const months = Object.keys(monthlyStats).sort();
-    
-    return months.map((month, i) => {
-      const nextMonth = months[i + 1];
-      let consumption = 0;
-
-      if (nextMonth) {
-        // Ha van következő hónap: Köv. hónap eleje - Ezen hónap eleje
-        consumption = monthlyStats[nextMonth].first - monthlyStats[month].first;
-      } else {
-        // Ha ez az utolsó (aktuális) hónap: Utolsó állás - Hónap eleji állás
-        consumption = monthlyStats[month].last - monthlyStats[month].first;
-      }
-
-      return {
-        honap: month,
-        fogyasztas: consumption > 0 ? Math.round(consumption * 100) / 100 : 0
-      };
-    });
   };
 
   const monthlyData = getMonthlyConsumption();
@@ -175,8 +146,8 @@ function App() {
                 <YAxis stroke="#94a3b8" fontSize={10} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
-                  itemStyle={{ color: '#f8fafc' }} // Ez teszi világossá az alsó (fogyasztás) szöveget
-                  labelStyle={{ color: '#fff', marginBottom: '4px', fontWeight: 'bold' }} // A dátum színe és stílusa
+                  itemStyle={{ color: '#f8fafc' }}
+                  labelStyle={{ color: '#fff', marginBottom: '4px', fontWeight: 'bold' }}
                   formatter={(value: any) => [`${value} ${filter === 'Áram' ? 'kWh' : 'm³'}`, 'fogyasztás']}
                 />
                 <Bar dataKey="fogyasztas" radius={[4, 4, 0, 0]}>
