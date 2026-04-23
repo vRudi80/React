@@ -4,7 +4,7 @@ import Footer from './Footer';
 import './App.css';
 
 // ⚠️ IDE ÍRD A SZERVERED CÍMÉT (pl. https://api.szervered.hu)
-const BACKEND_URL = "http://localhost:4000"; 
+const BACKEND_URL = "https://react-ideas-backend.onrender.com"; 
 
 function App() {
   const [records, setRecords] = useState([]);
