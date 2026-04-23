@@ -15,7 +15,7 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
 });
 
-// Adatok lekérése
+// LEKÉRDEZÉS
 app.get('/api/records', async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -24,17 +24,17 @@ app.get('/api/records', async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Adatbázis hiba' });
+    res.status(500).json({ error: 'DB hiba' });
   }
 });
 
-// index.js - Új adat mentése választható dátummal
+// MENTÉS
 app.post('/api/records', async (req, res) => {
-  const { type, value, date } = req.body; // Most már a 'date' is megérkezik
+  const { type, value, date } = req.body;
   try {
     const [result] = await pool.query(
       'INSERT INTO utility_records (Type, Value, Date) VALUES (?, ?, ?)',
-      [type, value, date] // A kiválasztott dátumot szúrjuk be
+      [type, value, date]
     );
     res.status(201).json({ id: result.insertId });
   } catch (err) {
@@ -43,16 +43,23 @@ app.post('/api/records', async (req, res) => {
   }
 });
 
-// index.js - Adat törlése ID alapján
+// --- EZ HIÁNYZOTT: TÖRLÉS ---
 app.delete('/api/records/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query('DELETE FROM utility_records WHERE Id = ?', [id]);
-    res.status(204).end(); // Sikeres törlés, nincs tartalom visszaküldve
+    // Fontos: Nagy 'Id' kell, mert az adatbázisodban így szerepel!
+    const [result] = await pool.query('DELETE FROM utility_records WHERE Id = ?', [id]);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Nincs ilyen rekord' });
+    }
+    
+    res.status(204).end();
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Hiba a törlés során' });
+    console.error("Törlési hiba:", err);
+    res.status(500).json({ error: 'Szerver hiba törléskor' });
   }
 });
+
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`API fut a ${PORT} porton`));
