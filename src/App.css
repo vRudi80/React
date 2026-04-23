@@ -1,33 +1,145 @@
-/* src/App.css */
 :root {
-  --bg-color: #121212;
-  --card-bg: #1e1e1e;
+  --bg-main: #0f172a;
+  --bg-card: #1e293b;
   --primary: #3b82f6;
-  --danger: #ef4444;
-  --text: #ffffff;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent-electric: #fbbf24;
+  --accent-water: #38bdf8;
+  --accent-gas: #f87171;
 }
 
 body {
-  background-color: var(--bg-color);
-  color: var(--text);
-  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   margin: 0;
-  
-  /* --- EZT ADTUK HOZZÁ --- */
-  display: flex;             /* Bekapcsolja a Flexbox elrendezést */
-  justify-content: center;   /* Vízszintesen középre rendezi a tartalmat */
-  align-items: center;       /* Függőlegesen középre rendezi (opcionális, ha alacsony a tartalom) */
-  min-height: 100vh;        /* Biztosítja, hogy a body kitöltse a teljes képernyőmagasságot */
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
 }
 
-.container {
-  max-width: 500px;         /* Maximális szélesség, hogy ne nyúljon el */
-  width: 100%;             /* Kitölti a rendelkezésre álló helyet, de max 500px-ig */
+.app-wrapper {
+  width: 100%;
+  max-width: 600px;
+  padding: 2rem 1rem;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(to right, #3b82f6, #60a5fa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.card {
+  background: var(--bg-card);
   padding: 2rem;
-  box-sizing: border-box;  /* Beleszámolja a paddinget a szélességbe */
-  
-  /* --- EZ IS FONTOS LEHET --- */
-  margin: 0 auto;          /* Ha a flexbox nem működne valamiért, ez is középre teszi */
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+  margin-bottom: 2rem;
 }
 
-/* ... a kártya és gomb stílusok maradnak ... */
+.card h2 {
+  text-align: center;
+  margin-top: 0;
+  font-size: 1.2rem;
+  color: var(--text-muted);
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+select, input {
+  background: #334155;
+  border: 1px solid #475569;
+  color: white;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 1rem;
+  outline: none;
+  transition: border 0.3s;
+}
+
+select:focus, input:focus {
+  border-color: var(--primary);
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 10px;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.3s;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+  transform: translateY(-2px);
+}
+
+/* LISTA STÍLUSA */
+.list-section h3 {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.records-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.record-item {
+  background: var(--bg-card);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.2rem;
+  border-radius: 12px;
+  border-left: 5px solid var(--primary);
+  transition: transform 0.2s;
+}
+
+.record-item:hover {
+  transform: scale(1.02);
+}
+
+.record-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.record-type {
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.record-date {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.record-value {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+/* Típusfüggő színek */
+.record-item.Áram { border-left-color: var(--accent-electric); }
+.record-item.Víz { border-left-color: var(--accent-water); }
+.record-item.Gáz { border-left-color: var(--accent-gas); }
