@@ -15,7 +15,7 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
 });
 
-// Adatok lekérése (Figyelve a nagybetűs oszlopokra!)
+// Adatok lekérése
 app.get('/api/records', async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -24,11 +24,11 @@ app.get('/api/records', async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'DB hiba' });
+    res.status(500).json({ error: 'Adatbázis hiba' });
   }
 });
 
-// Mentés
+// Új adat mentése
 app.post('/api/records', async (req, res) => {
   const { type, value } = req.body;
   try {
@@ -44,4 +44,4 @@ app.post('/api/records', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`API fut a ${PORT} porton`));
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
