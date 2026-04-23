@@ -1,117 +1,73 @@
-/* App.css */
-:root {
-  --bg-main: #0f172a;
-  --bg-card: #1e293b;
-  --primary: #3b82f6;
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-}
-
-/* Ez biztosítja, hogy a teljes weboldal középre fókuszáljon */
-body {
-  margin: 0;
-  background-color: var(--bg-main);
-  color: var(--text-main);
-  font-family: 'Inter', sans-serif;
-  display: flex;
-  justify-content: center; /* Vízszintes közép */
-  min-height: 100vh;
-}
-
-/* A Vite #root elemét is középre kell kényszeríteni */
-#root {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-}
+/* App.css frissített részei */
 
 .app-wrapper {
   width: 100%;
-  max-width: 500px; /* Ne legyen túl széles, így mutat jól */
+  max-width: 800px; /* Szélesebb keret a jobb tagoltságért */
   padding: 2rem 1rem;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
-  align-items: center; /* MINDENT középre rendez belül is */
-}
-
-header {
-  text-align: center; /* A feliratok közepe */
-  margin-bottom: 2rem;
-}
-
-.card {
-  background: var(--bg-card);
-  width: 100%; /* Kitölti az 500px-es keretet */
-  padding: 1.5rem;
-  border-radius: 16px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-  margin-bottom: 2rem;
-  box-sizing: border-box;
-}
-
-.card h2 {
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-/* A gombok és inputok is legyenek egységesek */
-select, input, .btn-primary {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid #334155;
-  background: #334155;
-  color: white;
-  font-size: 1rem;
-}
-
-.btn-primary {
-  background: var(--primary);
-  border: none;
-  font-weight: bold;
-  cursor: pointer;
-  margin-top: 0.5rem;
-}
-
-/* LISTA TAGOLÁSA */
-.list-section {
-  width: 100%;
-}
-
-.list-section h3 {
-  text-align: center;
-  margin-bottom: 1rem;
+  align-items: center;
 }
 
 .record-item {
   background: var(--bg-card);
   width: 100%;
-  margin-bottom: 12px;
-  padding: 1rem;
-  border-radius: 12px;
+  margin-bottom: 16px; /* Nagyobb távolság a sorok között */
+  padding: 1.5rem 2rem; /* Több belső hely (padding) */
+  border-radius: 14px;
   display: flex;
-  justify-content: space-between; /* Típus balra, érték jobbra */
+  justify-content: space-between; /* Széttolja a két szélre az adatokat */
   align-items: center;
   box-sizing: border-box;
-  border-left: 4px solid var(--primary);
+  border-left: 6px solid var(--primary);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  transition: transform 0.2s ease;
 }
 
+.record-item:hover {
+  transform: translateX(5px); /* Finom elmozdulás hover esetén */
+}
+
+/* Bal oldali rész: Típus és Dátum */
 .record-info {
-  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* Távolság a típus és a dátum között */
+}
+
+.record-type {
+  font-size: 1.2rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.record-date {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+/* Jobb oldali rész: Érték */
+.record-value-container {
+  text-align: right;
 }
 
 .record-value {
-  text-align: right;
-  font-weight: bold;
-  font-size: 1.2rem;
+  font-size: 1.6rem; /* Nagyobb, hangsúlyos érték */
+  font-weight: 800;
   color: var(--primary);
 }
+
+.record-unit {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+/* Színkódok élénkebben */
+.record-item.Áram { border-left-color: #fbbf24; }
+.record-item.Víz { border-left-color: #38bdf8; }
+.record-item.Gáz { border-left-color: #f87171; }
