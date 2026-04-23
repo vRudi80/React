@@ -158,8 +158,10 @@ function App() {
                 <XAxis dataKey="honap" stroke="#94a3b8" fontSize={10} />
                 <YAxis stroke="#94a3b8" fontSize={10} />
                 <Tooltip 
-                    contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}}
-                    formatter={(value: any) => [`${value} ${filter === 'Áram' ? 'kWh' : 'm³'}`, 'fogyasztás']}
+                  contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+                  itemStyle={{ color: '#f8fafc' }} // Ez teszi világossá az alsó (fogyasztás) szöveget
+                  labelStyle={{ color: '#fff', marginBottom: '4px', fontWeight: 'bold' }} // A dátum színe és stílusa
+                  formatter={(value: any) => [`${value} ${filter === 'Áram' ? 'kWh' : 'm³'}`, 'fogyasztás']}
                 />
                 <Bar dataKey="fogyasztas" radius={[4, 4, 0, 0]}>
                    {monthlyData.map((entry, index) => (
