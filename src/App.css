@@ -208,6 +208,22 @@ select, input, .btn-primary {
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
 }
+
+.no-chart-msg {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.chart-card h2 {
+  margin-bottom: 1.5rem;
+  color: var(--text-main);
+  font-size: 1.1rem;
+}
 /* Színkódok élénkebben */
 .record-item.Áram { border-left-color: #fbbf24; }
 .record-item.Víz { border-left-color: #38bdf8; }
