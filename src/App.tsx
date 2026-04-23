@@ -46,40 +46,55 @@ function App() {
     } catch (err) { alert("Hiba a törlés során!"); }
   };
 
-  // ADATOK ELŐKÉSZÍTÉSE ÉS SORRENDEZÉSE
+  // ADATOK ELŐKÉSZÍTÉSE
   const currentTypeRecords = records
     .filter((r: any) => r.Type === filter)
     .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
 
-  // 1. Napi adatok (Óraállás)
-  const dailyData = [...currentTypeRecords].map((r: any) => ({
+  // 1. Napi adatok a vonaldiagramhoz (Mérőóra állása)
+  const dailyData = currentTypeRecords.map((r: any) => ({
     label: r.FormattedDate.split(' ')[0],
     ertek: parseFloat(r.Value)
   }));
 
-  // 2. JAVÍTOTT HAVI FOGYASZTÁS LOGIKA (Óracsere kezeléssel)
+  // 2. PROFI HAVI FOGYASZTÁS LOGIKA (Óracsere kezeléssel)
   const getMonthlyConsumption = () => {
-    const consumptionByMonth: { [key: string]: number } = {};
+    const monthlyFirsts: { [key: string]: number } = {};
+    const monthlyLasts: { [key: string]: number } = {};
+    
+    currentTypeRecords.forEach((r: any) => {
+      const monthKey = r.FormattedDate.substring(0, 7); // YYYY-MM
+      const val = parseFloat(r.Value);
+      if (monthlyFirsts[monthKey] === undefined) monthlyFirsts[monthKey] = val;
+      monthlyLasts[monthKey] = val;
+    });
 
-    for (let i = 1; i < currentTypeRecords.length; i++) {
-      const current = currentTypeRecords[i];
-      const prev = currentTypeRecords[i - 1];
-      
-      const currentVal = parseFloat(current.Value);
-      const prevVal = parseFloat(prev.Value);
-      const monthKey = current.FormattedDate.substring(0, 7); // YYYY-MM
+    const months = Object.keys(monthlyFirsts).sort();
+    
+    return months.map((month, i) => {
+      const nextMonth = months[i + 1];
+      let consumption = 0;
 
-      // Csak ha az új állás nagyobb (vagy egyenlő), akkor adjuk hozzá a fogyasztást
-      if (currentVal >= prevVal) {
-        const diff = currentVal - prevVal;
-        consumptionByMonth[monthKey] = (consumptionByMonth[monthKey] || 0) + diff;
+      if (nextMonth) {
+        // Ha van következő hónap: Köv. hónap eleje - Ezen hónap eleje
+        const diff = monthlyFirsts[nextMonth] - monthlyFirsts[month];
+        
+        if (diff >= 0) {
+          consumption = diff;
+        } else {
+          // ÓRACSERE ESETÉN: Az adott hónapon belüli növekményt mutatjuk csak
+          consumption = monthlyLasts[month] - monthlyFirsts[month];
+        }
+      } else {
+        // AKTUÁLIS HÓNAP: Utolsó rögzített állás - Hónap eleji állás
+        consumption = monthlyLasts[month] - monthlyFirsts[month];
       }
-    }
 
-    return Object.keys(consumptionByMonth).sort().map(month => ({
-      honap: month,
-      fogyasztas: Math.round(consumptionByMonth[month] * 100) / 100
-    }));
+      return {
+        honap: month,
+        fogyasztas: Math.round(consumption * 100) / 100
+      };
+    });
   };
 
   const monthlyData = getMonthlyConsumption();
@@ -167,7 +182,7 @@ function App() {
             <div key={rec.Id} className={`record-item ${rec.Type}`}>
               <div className="record-info">
                 <span className="record-type">
-                    {rec.Type === 'Áram' ? '⚡' : rec.Type === 'Víz' ? '💧' : '🔥'} {rec.Type}
+                  {rec.Type === 'Áram' ? '⚡' : rec.Type === 'Víz' ? '💧' : '🔥'} {rec.Type}
                 </span>
                 <span className="record-date">📅 {rec.FormattedDate}</span>
               </div>
