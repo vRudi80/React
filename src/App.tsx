@@ -59,20 +59,36 @@ function App() {
 
   // 2. JAVÍTOTT HAVI FOGYASZTÁS LOGIKA
   const getMonthlyConsumption = () => {
-    const monthlyStats: { [key: string]: { first: number; last: number } } = {};
-    
-    currentTypeRecords.forEach((r: any) => {
-      const monthKey = r.FormattedDate.substring(0, 7); // "YYYY-MM"
-      const val = parseFloat(r.Value);
+    const consumptionByMonth: { [key: string]: number } = {};
+
+    // Végig megyünk az összes sorrendbe rakott rekordon
+    for (let i = 1; i < currentTypeRecords.length; i++) {
+      const current = currentTypeRecords[i];
+      const prev = currentTypeRecords[i - 1];
       
-      if (!monthlyStats[monthKey]) {
-        // Első rögzítés az adott hónapban
-        monthlyStats[monthKey] = { first: val, last: val };
+      const currentVal = parseFloat(current.Value);
+      const prevVal = parseFloat(prev.Value);
+      const monthKey = current.FormattedDate.substring(0, 7); // A fogyasztást ahhoz a hónaphoz írjuk, amikor mértük
+
+      // Ha az új állás nagyobb vagy egyenlő, mint az előző, hozzáadjuk a különbséget
+      if (currentVal >= prevVal) {
+        const diff = currentVal - prevVal;
+        consumptionByMonth[monthKey] = (consumptionByMonth[monthKey] || 0) + diff;
       } else {
-        // Mindig frissítjük az utolsó állást (a sorrendezés miatt a legkésőbbi lesz az utolsó)
-        monthlyStats[monthKey].last = val;
+        // ÓRACSERE ESETÉN: 
+        // Itt a különbséget nem tudjuk pontosan (hacsak nem rögzítetted a régi óra utolsó állását 0-val),
+        // ezért ezt a negatív ugrást egyszerűen figyelmen kívül hagyjuk.
+        // A számlálás a következő rögzítéstől indul újra a 0-ról.
+        console.log(`Óracsere észlelve: ${prevVal} -> ${currentVal}`);
       }
-    });
+    }
+
+    // Átalakítás a grafikonnak megfelelő formátumba
+    return Object.keys(consumptionByMonth).sort().map(month => ({
+      honap: month,
+      fogyasztas: Math.round(consumptionByMonth[month] * 100) / 100
+    }));
+  };
 
     const months = Object.keys(monthlyStats).sort();
     
