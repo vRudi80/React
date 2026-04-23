@@ -250,6 +250,47 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   background: #f87171;
   color: white;
 }
+.controls-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.view-toggle {
+  display: flex;
+  background: #1e293b;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+}
+
+.view-toggle button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px 15px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.view-toggle button.active {
+  background: #334155;
+  color: white;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 10px;
+  font-style: italic;
+}
 /* Színkódok élénkebben */
 .record-item.Áram { border-left-color: #fbbf24; }
 .record-item.Víz { border-left-color: #38bdf8; }
