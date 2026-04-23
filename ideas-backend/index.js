@@ -43,5 +43,16 @@ app.post('/api/records', async (req, res) => {
   }
 });
 
+// index.js - Adat törlése ID alapján
+app.delete('/api/records/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM utility_records WHERE Id = ?', [id]);
+    res.status(204).end(); // Sikeres törlés, nincs tartalom visszaküldve
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Hiba a törlés során' });
+  }
+});
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
