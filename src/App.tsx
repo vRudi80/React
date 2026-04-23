@@ -73,7 +73,7 @@ function App() {
 
     for (let i = 1; i < months.length; i++) {
       const currentMonth = months[i];
-      const prevMonth = months[i];
+      const prevMonth = months[i - 1];
       const consumption = monthlyFirsts[currentMonth] - monthlyFirsts[prevMonth];
       
       consumptionData.push({
