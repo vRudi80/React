@@ -46,67 +46,66 @@ function App() {
     } catch (err) { alert("Hiba a törlés során!"); }
   };
 
-  // ADATOK ELŐKÉSZÍTÉSE
   const currentTypeRecords = records
     .filter((r: any) => r.Type === filter)
     .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
 
-  // 1. Napi adatok a vonaldiagramhoz (Mérőóra állása)
   const dailyData = currentTypeRecords.map((r: any) => ({
     label: r.FormattedDate.split(' ')[0],
     ertek: parseFloat(r.Value)
   }));
 
-  // 2. PROFI HAVI FOGYASZTÁS LOGIKA (Óracsere kezeléssel)
+  // JAVÍTOTT HAVI LOGIKA: Üzemanyagnál ÖSSZEAD, Rezsinél KIVON
   const getMonthlyConsumption = () => {
-    const monthlyFirsts: { [key: string]: number } = {};
-    const monthlyLasts: { [key: string]: number } = {};
-    
-    currentTypeRecords.forEach((r: any) => {
-      const monthKey = r.FormattedDate.substring(0, 7); // YYYY-MM
-      const val = parseFloat(r.Value);
-      if (monthlyFirsts[monthKey] === undefined) monthlyFirsts[monthKey] = val;
-      monthlyLasts[monthKey] = val;
-    });
-
-    const months = Object.keys(monthlyFirsts).sort();
-    
-    return months.map((month, i) => {
-      const nextMonth = months[i + 1];
-      let consumption = 0;
-
-      if (nextMonth) {
-        // Ha van következő hónap: Köv. hónap eleje - Ezen hónap eleje
-        const diff = monthlyFirsts[nextMonth] - monthlyFirsts[month];
-        
-        if (diff >= 0) {
-          consumption = diff;
+    if (filter === 'Üzemanyag') {
+      // Üzemanyag: Havi szumma (Ft)
+      const monthlySum: { [key: string]: number } = {};
+      currentTypeRecords.forEach((r: any) => {
+        const monthKey = r.FormattedDate.substring(0, 7);
+        monthlySum[monthKey] = (monthlySum[monthKey] || 0) + parseFloat(r.Value);
+      });
+      return Object.keys(monthlySum).sort().map(month => ({
+        honap: month,
+        fogyasztas: monthlySum[month]
+      }));
+    } else {
+      // Rezsi: Óraállás különbség (kWh/m3)
+      const monthlyFirsts: { [key: string]: number } = {};
+      const monthlyLasts: { [key: string]: number } = {};
+      currentTypeRecords.forEach((r: any) => {
+        const monthKey = r.FormattedDate.substring(0, 7);
+        const val = parseFloat(r.Value);
+        if (monthlyFirsts[monthKey] === undefined) monthlyFirsts[monthKey] = val;
+        monthlyLasts[monthKey] = val;
+      });
+      const months = Object.keys(monthlyFirsts).sort();
+      return months.map((month, i) => {
+        const nextMonth = months[i + 1];
+        let consumption = 0;
+        if (nextMonth) {
+          const diff = monthlyFirsts[nextMonth] - monthlyFirsts[month];
+          consumption = diff >= 0 ? diff : (monthlyLasts[month] - monthlyFirsts[month]);
         } else {
-          // ÓRACSERE ESETÉN: Az adott hónapon belüli növekményt mutatjuk csak
           consumption = monthlyLasts[month] - monthlyFirsts[month];
         }
-      } else {
-        // AKTUÁLIS HÓNAP: Utolsó rögzített állás - Hónap eleji állás
-        consumption = monthlyLasts[month] - monthlyFirsts[month];
-      }
-
-      return {
-        honap: month,
-        fogyasztas: Math.round(consumption * 100) / 100
-      };
-    });
+        return { honap: month, fogyasztas: Math.round(consumption * 100) / 100 };
+      });
+    }
   };
 
   const monthlyData = getMonthlyConsumption();
+  const getUnit = (t: string) => t === 'Áram' ? 'kWh' : t === 'Üzemanyag' ? 'Ft' : 'm³';
+  const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : '⛽';
+  const getColor = (t: string) => t === 'Áram' ? '#fbbf24' : t === 'Víz' ? '#38bdf8' : t === 'Gáz' ? '#f87171' : '#a855f7';
 
   return (
     <div className="app-wrapper">
       <header>
-        <h1>Rezsi Nyilvántartó</h1>
+        <h1>Rezsi & Tankolás</h1>
       </header>
 
       <section className="card main-card">
-        <h2>Új mérés rögzítése</h2>
+        <h2>Új adat rögzítése</h2>
         <div className="input-row">
           <div className="input-field">
             <label>Típus</label>
@@ -114,6 +113,7 @@ function App() {
               <option value="Áram">⚡ Áram</option>
               <option value="Víz">💧 Víz</option>
               <option value="Gáz">🔥 Gáz</option>
+              <option value="Üzemanyag">⛽ Üzemanyag</option>
             </select>
           </div>
           <div className="input-field">
@@ -121,29 +121,31 @@ function App() {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div className="input-field">
-            <label>Óraállás</label>
-            <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.00" />
+            <label>{type === 'Üzemanyag' ? 'Összeg (Ft)' : 'Óraállás'}</label>
+            <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" />
           </div>
         </div>
-        <button className="btn-primary" onClick={handleSave}>Mentés</button>
+        <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
       </section>
 
       <div className="controls-bar">
         <div className="filter-buttons">
-          {['Áram', 'Víz', 'Gáz'].map(f => (
-            <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>
-                {f === 'Áram' ? '⚡ Áram' : f === 'Víz' ? '💧 Víz' : '🔥 Gáz'}
+          {['Áram', 'Víz', 'Gáz', 'Üzemanyag'].map(f => (
+            <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>
+                {getIcon(f)} {f}
             </button>
           ))}
         </div>
         <div className="view-toggle">
-          <button className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>Napi (Állás)</button>
-          <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi (Fogyasztás)</button>
+          <button className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>
+            {filter === 'Üzemanyag' ? 'Lista' : 'Napi állás'}
+          </button>
+          <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi összesítő</button>
         </div>
       </div>
 
       <section className="card chart-card">
-        <h2>{filter} - {viewMode === 'daily' ? 'Mérőóra állása' : 'Havi fogyasztás'}</h2>
+        <h2>{filter} - {viewMode === 'daily' ? 'Bejegyzések' : 'Havi összesen'}</h2>
         <div style={{ width: '100%', height: 300 }}>
           <ResponsiveContainer>
             {viewMode === 'daily' ? (
@@ -151,8 +153,8 @@ function App() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                 <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
                 <YAxis stroke="#94a3b8" fontSize={10} />
-                <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} />
-                <Line type="monotone" dataKey="ertek" stroke="#3b82f6" strokeWidth={3} dot={{r: 4, fill: '#3b82f6'}} />
+                <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} labelStyle={{color: '#fff'}} />
+                <Line type="monotone" dataKey="ertek" stroke={getColor(filter)} strokeWidth={3} dot={{r: 4, fill: getColor(filter)}} />
               </LineChart>
             ) : (
               <BarChart data={monthlyData}>
@@ -163,11 +165,11 @@ function App() {
                   contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
                   itemStyle={{ color: '#f8fafc' }}
                   labelStyle={{ color: '#fff', marginBottom: '4px', fontWeight: 'bold' }}
-                  formatter={(value: any) => [`${value} ${filter === 'Áram' ? 'kWh' : 'm³'}`, 'fogyasztás']}
+                  formatter={(v: any) => [`${v.toLocaleString()} ${getUnit(filter)}`, 'Összesen']}
                 />
                 <Bar dataKey="fogyasztas" radius={[4, 4, 0, 0]}>
                    {monthlyData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={filter === 'Áram' ? '#fbbf24' : filter === 'Víz' ? '#38bdf8' : '#f87171'} />
+                    <Cell key={`cell-${index}`} fill={getColor(filter)} />
                   ))}
                 </Bar>
               </BarChart>
@@ -181,15 +183,13 @@ function App() {
           {[...currentTypeRecords].reverse().map((rec: any) => (
             <div key={rec.Id} className={`record-item ${rec.Type}`}>
               <div className="record-info">
-                <span className="record-type">
-                  {rec.Type === 'Áram' ? '⚡' : rec.Type === 'Víz' ? '💧' : '🔥'} {rec.Type}
-                </span>
+                <span className="record-type">{getIcon(rec.Type)} {rec.Type}</span>
                 <span className="record-date">📅 {rec.FormattedDate}</span>
               </div>
               <div className="record-value-container">
                 <div className="val-box">
-                  <span className="record-value">{rec.Value}</span>
-                  <span className="record-unit">{rec.Type === 'Áram' ? 'kWh' : 'm³'}</span>
+                  <span className="record-value">{parseFloat(rec.Value).toLocaleString()}</span>
+                  <span className="record-unit">{getUnit(rec.Type)}</span>
                 </div>
                 <button className="btn-delete" onClick={() => handleDelete(rec.Id)}>Törlés</button>
               </div>
