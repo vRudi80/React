@@ -224,6 +224,32 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: var(--text-main);
   font-size: 1.1rem;
 }
+
+.record-value-container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.val-box {
+  text-align: right;
+}
+
+.btn-delete {
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+  border: 1px solid #f87171;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-delete:hover {
+  background: #f87171;
+  color: white;
+}
 /* Színkódok élénkebben */
 .record-item.Áram { border-left-color: #fbbf24; }
 .record-item.Víz { border-left-color: #38bdf8; }
