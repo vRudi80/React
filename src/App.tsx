@@ -1,94 +1,120 @@
 import React, { useState, useEffect } from 'react';
-import Header from './Header';
-import Footer from './Footer';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './App.css';
 
-// ⚠️ IDE ÍRD A SZERVERED CÍMÉT (pl. https://api.szervered.hu)
-const BACKEND_URL = "https://react-ideas-backend.onrender.com"; 
+const BACKEND_URL = "https://react-ideas-backend.onrender.com";
 
 function App() {
   const [records, setRecords] = useState([]);
   const [type, setType] = useState('Áram');
   const [value, setValue] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]); // Alapértelmezett a mai nap
+  const [filter, setFilter] = useState('Összes');
 
   const fetchRecords = async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/records`);
       const data = await res.json();
       setRecords(data);
-    } catch (err) {
-      console.error("Hiba a letöltésnél:", err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   useEffect(() => { fetchRecords(); }, []);
 
   const handleSave = async () => {
-    if (!value) return alert("Kérlek adj meg egy értéket!");
-    
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/records`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, value: parseFloat(value) })
-      });
-
-      if (res.ok) {
-        setValue('');
-        fetchRecords();
-      }
-    } catch (err) {
-      alert("Hiba a mentés során!");
-    }
+    if (!value || !date) return alert("Minden mezőt tölts ki!");
+    await fetch(`${BACKEND_URL}/api/records`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, value: parseFloat(value), date })
+    });
+    setValue('');
+    fetchRecords();
   };
 
- return (
-  <div className="app-wrapper">
-    <header>
-      <h1>Rezsi Nyilvántartó</h1>
-      <p>Fogyasztás követése okosan</p>
-    </header>
+  // Szűrt lista
+  const filteredRecords = filter === 'Összes' 
+    ? records 
+    : records.filter((r: any) => r.Type === filter);
 
-    <main>
-      <section className="card">
-        <h2>Új adat rögzítése</h2>
-        <div className="input-group">
-          <select value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="Áram">⚡ Áram (kWh)</option>
-            <option value="Víz">💧 Víz (m³)</option>
-            <option value="Gáz">🔥 Gáz (m³)</option>
-          </select>
-          <input 
-            type="number" 
-            placeholder="Mérőóra állása" 
-            value={value} 
-            onChange={(e) => setValue(e.target.value)} 
-          />
-          <button className="btn-primary" onClick={handleSave}>Rögzítés</button>
+  // Grafikon adatok (fordított sorrend, hogy időben előre haladjon)
+  const chartData = [...filteredRecords].reverse().map((r: any) => ({
+    datum: r.FormattedDate.split(' ')[0],
+    ertek: parseFloat(r.Value)
+  }));
+
+  return (
+    <div className="app-wrapper">
+      <header>
+        <h1>Rezsi Nyilvántartó</h1>
+      </header>
+
+      <section className="card main-card">
+        <h2>Új mérés rögzítése</h2>
+        <div className="input-row">
+          <div className="input-field">
+            <label>Típus</label>
+            <select value={type} onChange={(e) => setType(e.target.value)}>
+              <option value="Áram">⚡ Áram</option>
+              <option value="Víz">💧 Víz</option>
+              <option value="Gáz">🔥 Gáz</option>
+            </select>
+          </div>
+          <div className="input-field">
+            <label>Dátum</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="input-field">
+            <label>Mérőóra állása</label>
+            <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.00" />
+          </div>
+        </div>
+        <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
+      </section>
+
+      {/* GRAFIKON SZEKCIÓ */}
+      <section className="card chart-card">
+        <h2>Fogyasztási trend ({filter})</h2>
+        <div style={{ width: '100%', height: 300 }}>
+          <ResponsiveContainer>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+              <XAxis dataKey="datum" stroke="#94a3b8" fontSize={12} />
+              <YAxis stroke="#94a3b8" fontSize={12} />
+              <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} />
+              <Line type="monotone" dataKey="ertek" stroke="#3b82f6" strokeWidth={3} dot={{r: 6}} activeDot={{r: 8}} />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </section>
 
+      {/* SZŰRŐK */}
+      <div className="filter-bar">
+        {['Összes', 'Áram', 'Víz', 'Gáz'].map(f => (
+          <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>
+            {f}
+          </button>
+        ))}
+      </div>
+
       <section className="list-section">
-        <h3>Legutóbbi mérések</h3>
         <div className="records-grid">
-          {records.map((rec: any) => (
+          {filteredRecords.map((rec: any) => (
             <div key={rec.Id} className={`record-item ${rec.Type}`}>
               <div className="record-info">
-                <span className="record-type">
-                   {rec.Type === 'Áram' ? '⚡' : rec.Type === 'Víz' ? '💧' : '🔥'} {rec.Type}
-                </span>
+                <span className="record-type">{rec.Type}</span>
                 <span className="record-date">{rec.FormattedDate}</span>
               </div>
-              <div className="record-value">
-                {rec.Value} <small>{rec.Type === 'Áram' ? 'kWh' : 'm³'}</small>
+              <div className="record-value-container">
+                <span className="record-value">{rec.Value}</span>
+                <span className="record-unit">{rec.Type === 'Áram' ? 'kWh' : 'm³'}</span>
               </div>
             </div>
           ))}
         </div>
       </section>
-    </main>
-  </div>
-);
+    </div>
+  );
 }
 
 export default App;
