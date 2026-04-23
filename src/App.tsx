@@ -42,44 +42,53 @@ function App() {
     }
   };
 
-  return (
-    <div className="app-wrapper">
-      <Header title="Rezsi nyilvántartó app" subtitle="Fogyasztás követése" />
+ return (
+  <div className="app-wrapper">
+    <header>
+      <h1>Rezsi Nyilvántartó</h1>
+      <p>Fogyasztás követése okosan</p>
+    </header>
 
-      <main className="container">
-        <div className="card">
-          <h2>Adatok rögzítése</h2>
-          <div className="input-group">
-            <select value={type} onChange={(e) => setType(e.target.value)}>
-              <option value="Áram">⚡ Áram (kWh)</option>
-              <option value="Víz">💧 Víz (m³)</option>
-              <option value="Gáz">🔥 Gáz (m³)</option>
-            </select>
-            <input 
-              type="number" 
-              placeholder="Mérőóra állása" 
-              value={value} 
-              onChange={(e) => setValue(e.target.value)} 
-            />
-            <button className="btn-primary" onClick={handleSave}>Rögzít</button>
-          </div>
+    <main>
+      <section className="card">
+        <h2>Új adat rögzítése</h2>
+        <div className="input-group">
+          <select value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="Áram">⚡ Áram (kWh)</option>
+            <option value="Víz">💧 Víz (m³)</option>
+            <option value="Gáz">🔥 Gáz (m³)</option>
+          </select>
+          <input 
+            type="number" 
+            placeholder="Mérőóra állása" 
+            value={value} 
+            onChange={(e) => setValue(e.target.value)} 
+          />
+          <button className="btn-primary" onClick={handleSave}>Rögzítés</button>
         </div>
+      </section>
 
-        <div className="list-section">
-          <h3>Legutóbbi mérések</h3>
+      <section className="list-section">
+        <h3>Legutóbbi mérések</h3>
+        <div className="records-grid">
           {records.map((rec: any) => (
-            <div key={rec.Id} className="record-item">
-              <span className="type-label">{rec.Type}</span>
-              <span className="value-label">{rec.Value}</span>
-              <span className="date-label">{rec.FormattedDate}</span>
+            <div key={rec.Id} className={`record-item ${rec.Type}`}>
+              <div className="record-info">
+                <span className="record-type">
+                   {rec.Type === 'Áram' ? '⚡' : rec.Type === 'Víz' ? '💧' : '🔥'} {rec.Type}
+                </span>
+                <span className="record-date">{rec.FormattedDate}</span>
+              </div>
+              <div className="record-value">
+                {rec.Value} <small>{rec.Type === 'Áram' ? 'kWh' : 'm³'}</small>
+              </div>
             </div>
           ))}
         </div>
-      </main>
-
-      <Footer />
-    </div>
-  );
+      </section>
+    </main>
+  </div>
+);
 }
 
 export default App;
