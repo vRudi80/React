@@ -81,7 +81,7 @@ function App() {
         // A számlálás a következő rögzítéstől indul újra a 0-ról.
         console.log(`Óracsere észlelve: ${prevVal} -> ${currentVal}`);
       }
-    }
+    };
 
     // Átalakítás a grafikonnak megfelelő formátumba
     return Object.keys(consumptionByMonth).sort().map(month => ({
