@@ -28,13 +28,13 @@ app.get('/api/records', async (req, res) => {
   }
 });
 
-// Új adat mentése
+// index.js - Új adat mentése választható dátummal
 app.post('/api/records', async (req, res) => {
-  const { type, value } = req.body;
+  const { type, value, date } = req.body; // Most már a 'date' is megérkezik
   try {
     const [result] = await pool.query(
-      'INSERT INTO utility_records (Type, Value, Date) VALUES (?, ?, NOW())',
-      [type, value]
+      'INSERT INTO utility_records (Type, Value, Date) VALUES (?, ?, ?)',
+      [type, value, date] // A kiválasztott dátumot szúrjuk be
     );
     res.status(201).json({ id: result.insertId });
   } catch (err) {
