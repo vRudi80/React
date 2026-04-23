@@ -9,7 +9,7 @@ function App() {
   const [type, setType] = useState('Áram');
   const [value, setValue] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [filter, setFilter] = useState('Összes');
+  const [filter, setFilter] = useState('Áram'); // Alapértelmezett szűrő az Áram
 
   const fetchRecords = async () => {
     try {
@@ -36,22 +36,28 @@ function App() {
     }
   };
 
-  // Szűrt lista az alsó táblázathoz
-  const filteredRecords = filter === 'Összes' 
-    ? records 
-    : records.filter((r: any) => r.Type === filter);
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Biztosan törölni szeretnéd ezt a bejegyzést?")) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/records/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        fetchRecords(); // Frissítjük a listát a törlés után
+      }
+    } catch (err) {
+      alert("Hiba történt a törlés során!");
+    }
+  };
 
-  // Grafikon adatok előkészítése (csak ha aktív a szűrő)
-  const isFilterActive = filter !== 'Összes';
-  const chartData = isFilterActive 
-    ? [...records]
-        .filter((r: any) => r.Type === filter)
-        .reverse() // Időrendbe tétel
-        .map((r: any) => ({
-          datum: r.FormattedDate.split(' ')[0],
-          ertek: parseFloat(r.Value)
-        }))
-    : [];
+  // Csak a szűrt rekordok megjelenítése
+  const filteredRecords = records.filter((r: any) => r.Type === filter);
+
+  // Grafikon adatok (mindig az aktuális szűrő alapján)
+  const chartData = [...filteredRecords].reverse().map((r: any) => ({
+    datum: r.FormattedDate.split(' ')[0],
+    ertek: parseFloat(r.Value)
+  }));
 
   return (
     <div className="app-wrapper">
@@ -59,7 +65,6 @@ function App() {
         <h1>Rezsi Nyilvántartó</h1>
       </header>
 
-      {/* RÖGZÍTÉS SZEKCIÓ */}
       <section className="card main-card">
         <h2>Új mérés rögzítése</h2>
         <div className="input-row">
@@ -77,12 +82,7 @@ function App() {
           </div>
           <div className="input-field">
             <label>Mérőóra állása</label>
-            <input 
-              type="number" 
-              value={value} 
-              onChange={(e) => setValue(e.target.value)} 
-              placeholder="0.00" 
-            />
+            <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.00" />
           </div>
         </div>
         <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
@@ -90,49 +90,36 @@ function App() {
 
       {/* SZŰRŐK */}
       <div className="filter-bar">
-        {['Összes', 'Áram', 'Víz', 'Gáz'].map(f => (
-          <button 
-            key={f} 
-            className={filter === f ? 'active' : ''} 
-            onClick={() => setFilter(f)}
-          >
-            {f === 'Összes' ? 'Mind' : f}
+        {['Áram', 'Víz', 'Gáz'].map(f => (
+          <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>
+            {f}
           </button>
         ))}
       </div>
 
-      {/* GRAFIKON SZEKCIÓ (Feltételes megjelenítés) */}
+      {/* GRAFIKON SZEKCIÓ */}
       <section className="card chart-card">
-        {isFilterActive ? (
-          <>
-            <h2>{filter} fogyasztási trend</h2>
-            <div style={{ width: '100%', height: 300 }}>
-              <ResponsiveContainer>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                  <XAxis dataKey="datum" stroke="#94a3b8" fontSize={11} tickMargin={10} />
-                  <YAxis stroke="#94a3b8" fontSize={11} />
-                  <Tooltip 
-                    contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} 
-                    itemStyle={{color: '#3b82f6'}}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="ertek" 
-                    stroke="#3b82f6" 
-                    strokeWidth={3} 
-                    dot={{r: 5, fill: '#3b82f6'}} 
-                    activeDot={{r: 8}} 
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </>
-        ) : (
-          <div className="no-chart-msg">
-            <p>📊 Válassz ki egy típust (Áram, Víz vagy Gáz) a grafikon megjelenítéséhez.</p>
-          </div>
-        )}
+        <h2>{filter} fogyasztási trend</h2>
+        <div style={{ width: '100%', height: 300 }}>
+          <ResponsiveContainer>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+              <XAxis dataKey="datum" stroke="#94a3b8" fontSize={11} />
+              <YAxis stroke="#94a3b8" fontSize={11} />
+              <Tooltip 
+                contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} 
+                itemStyle={{color: '#3b82f6'}}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="ertek" 
+                stroke="#3b82f6" 
+                strokeWidth={3} 
+                dot={{r: 5, fill: '#3b82f6'}} 
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </section>
 
       {/* LISTA SZEKCIÓ */}
@@ -147,8 +134,11 @@ function App() {
                 <span className="record-date">📅 {rec.FormattedDate}</span>
               </div>
               <div className="record-value-container">
-                <span className="record-value">{rec.Value}</span>
-                <span className="record-unit">{rec.Type === 'Áram' ? 'kWh' : 'm³'}</span>
+                <div className="val-box">
+                  <span className="record-value">{rec.Value}</span>
+                  <span className="record-unit">{rec.Type === 'Áram' ? 'kWh' : 'm³'}</span>
+                </div>
+                <button className="btn-delete" onClick={() => handleDelete(rec.Id)}>Törlés</button>
               </div>
             </div>
           ))}
