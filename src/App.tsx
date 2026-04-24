@@ -26,8 +26,6 @@ function App() {
   const [filter, setFilter] = useState('Áram');
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('usage'); 
-  
-  // MEGOSZTÁSHOZ SZÜKSÉGES ÁLLAPOT
   const [shareEmail, setShareEmail] = useState('');
 
   const fetchAll = async (token: string, targetId?: string) => {
@@ -94,41 +92,26 @@ function App() {
     } catch (err) { alert("Hiba a mentéskor"); }
   };
 
-  // MEGOSZTÁS KEZELÉSE
   const handleShare = async () => {
     if (!shareEmail || !user) return;
     try {
       const res = await fetch(`${BACKEND_URL}/api/shares`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${user.token}` 
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
         body: JSON.stringify({ sharedWithEmail: shareEmail.toLowerCase() })
       });
-      if (res.ok) { 
-        alert("Sikeres megosztás!"); 
-        setShareEmail(''); 
-      } else {
-        alert("Hiba a megosztáskor!");
-      }
-    } catch (err) { alert("Szerver hiba a megosztáskor"); }
+      if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
+      else { alert("Hiba a megosztáskor!"); }
+    } catch (err) { alert("Szerver hiba"); }
   };
 
   const handleDelete = async (id: number, listType: 'meter' | 'invoice') => {
     if (!window.confirm("Biztosan törlöd ezt a tételt?") || !user) return;
     const endpoint = listType === 'meter' ? `/api/records/${id}` : `/api/invoices/${id}`;
-    
     const res = await fetch(`${BACKEND_URL}${endpoint}`, { 
-      method: 'DELETE', 
-      headers: { 'Authorization': `Bearer ${user.token}` } 
+      method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } 
     });
-    
-    if (res.ok) {
-      fetchAll(user.token);
-    } else {
-      alert("Hiba a törlés során!");
-    }
+    if (res.ok) { fetchAll(user.token); }
   };
 
   const handleUserChange = (newId: string) => {
@@ -140,12 +123,10 @@ function App() {
     if (displayMode === 'cost' && viewMode === 'daily') return [];
     const keyLen = viewMode === 'monthly' ? 7 : 4;
     const dataMap: { [key: string]: { usage: number, cost: number } } = {};
-
     if (displayMode === 'usage') {
       const filtered = records.filter((r: any) => r.Type === filter)
         .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
       if (viewMode === 'daily') return filtered.map((r: any) => ({ label: r.FormattedDate.split(' ')[0], ertek: parseFloat(r.Value) }));
-      
       for (let i = 1; i < filtered.length; i++) {
         const curV = parseFloat(filtered[i].Value);
         const preV = parseFloat(filtered[i-1].Value);
@@ -163,14 +144,12 @@ function App() {
       });
     }
     return Object.keys(dataMap).sort().map(key => ({
-      label: key,
-      ertek: displayMode === 'usage' ? Math.round(dataMap[key].usage * 100) / 100 : dataMap[key].cost
+      label: key, ertek: displayMode === 'usage' ? Math.round(dataMap[key].usage * 100) / 100 : dataMap[key].cost
     }));
   };
 
   const finalData = getChartData();
   const getUnit = () => displayMode === 'cost' ? 'Ft' : (filter === 'Áram' ? 'kWh' : 'm³');
-  
   const getIcon = (t: string) => {
     switch(t) {
       case 'Áram': return '⚡'; case 'Víz': return '💧'; case 'Gáz': return '🔥';
@@ -179,7 +158,6 @@ function App() {
       default: return '📄';
     }
   };
-
   const getColor = (t: string = filter) => {
     if (displayMode === 'cost' && t !== 'Összes') return '#10b981';
     if (t === 'Összes') return '#6366f1';
@@ -191,7 +169,6 @@ function App() {
   };
 
   const isInvoiceOnly = (t: string) => ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(t);
-
   const combinedList = [
     ...(filter === 'Összes' ? [] : records.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter' }))),
     ...invoices.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, FormattedDate: i.Month }))
@@ -212,8 +189,14 @@ function App() {
 
         {!user ? (
           <section className="card login-card">
-            <h2>Üdvözöljük!</h2>
-            <div className="google-btn-container"><GoogleLogin onSuccess={handleLoginSuccess} /></div>
+            <h2>Üdvözöljük a Rezsiappban!</h2>
+            <p className="login-desc">
+              Az alkalmazás használatához biztonságos Google-bejelentkezés szükséges. 
+              Adataidat védett módon, a saját fiókodhoz kötve tároljuk.
+            </p>
+            <div className="google-btn-container">
+              <GoogleLogin onSuccess={handleLoginSuccess} onError={() => alert('Hiba')} />
+            </div>
           </section>
         ) : (
           <>
@@ -222,20 +205,12 @@ function App() {
                 <div className="view-selector">
                   <select value={viewingUserId || ''} onChange={(e) => handleUserChange(e.target.value)}>
                     <option value={user.sub}>🏠 Saját adataim</option>
-                    {sharedWithMe.map((s: any) => (
-                      <option key={s.owner_id} value={s.owner_id}>🤝 {s.owner_email}</option>
-                    ))}
+                    {sharedWithMe.map((s: any) => (<option key={s.owner_id} value={s.owner_id}>🤝 {s.owner_email}</option>))}
                   </select>
                 </div>
-                
                 {viewingUserId === user.sub && (
                   <div className="share-input-group">
-                    <input 
-                      type="email" 
-                      placeholder="Email a megosztáshoz..." 
-                      value={shareEmail} 
-                      onChange={(e) => setShareEmail(e.target.value)} 
-                    />
+                    <input type="email" placeholder="Email a megosztáshoz..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
                     <button className="btn-share" onClick={handleShare}>+</button>
                   </div>
                 )}
@@ -299,12 +274,7 @@ function App() {
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                         <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                         <YAxis fontSize={10} stroke="#94a3b8" />
-                        <Tooltip 
-                          contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} 
-                          labelStyle={{color: '#94a3b8', fontWeight: 'bold'}}
-                          itemStyle={{color: '#f8fafc'}}
-                          formatter={(v:any) => [`${v.toLocaleString()} ${getUnit()}`, displayMode==='usage'?'Fogyasztás':'Összeg']} 
-                        />
+                        <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} labelStyle={{color: '#94a3b8', fontWeight: 'bold'}} itemStyle={{color: '#f8fafc'}} formatter={(v:any) => [`${v.toLocaleString()} ${getUnit()}`, displayMode==='usage'?'Fogyasztás':'Összeg']} />
                         <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{finalData.map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
                       </BarChart>
                     )}
