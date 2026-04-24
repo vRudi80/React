@@ -91,7 +91,7 @@ function App() {
   };
 
   const handleSave = async () => {
-    if (!value || !date || !user) return alert("Mezők!");
+    if (!value || !date || !user) return alert("Minden mezőt tölts ki!");
     try {
       await fetch(`${BACKEND_URL}/api/records`, {
         method: 'POST',
@@ -128,11 +128,11 @@ function App() {
       });
     } else {
       for (let i = 1; i < currentTypeRecords.length; i++) {
-        const currentVal = parseFloat(currentTypeRecords[i].Value);
-        const prevVal = parseFloat(currentTypeRecords[i - 1].Value);
-        if (currentVal >= prevVal) {
-          const monthKey = currentTypeRecords[i].FormattedDate.substring(0, 7);
-          monthlySum[monthKey] = (monthlySum[monthKey] || 0) + (currentVal - prevVal);
+        const curV = parseFloat(currentTypeRecords[i].Value);
+        const preV = parseFloat(currentTypeRecords[i-1].Value);
+        if (curV >= preV) {
+          const mKey = currentTypeRecords[i].FormattedDate.substring(0, 7);
+          monthlySum[mKey] = (monthlySum[mKey] || 0) + (curV - preV);
         }
       }
     }
@@ -148,147 +148,12 @@ function App() {
       });
     } else {
       for (let i = 1; i < currentTypeRecords.length; i++) {
-        const currentVal = parseFloat(currentTypeRecords[i].Value);
-        const prevVal = parseFloat(currentTypeRecords[i - 1].Value);
-        if (currentVal >= prevVal) {
-          const yearKey = currentTypeRecords[i].FormattedDate.substring(0, 4);
-          annualSum[yearKey] = (annualSum[yearKey] || 0) + (currentVal - prevVal);
+        const curV = parseFloat(currentTypeRecords[i].Value);
+        const preV = parseFloat(currentTypeRecords[i-1].Value);
+        if (curV >= preV) {
+          const yKey = currentTypeRecords[i].FormattedDate.substring(0, 4);
+          annualSum[yKey] = (annualSum[yKey] || 0) + (curV - preV);
         }
       }
     }
-    return Object.keys(annualSum).sort().map(y => ({ label: y, ertek: Math.round(annualSum[y] * 100) / 100 }));
-  };
-
-  const chartData = viewMode === 'daily' ? dailyData : viewMode === 'monthly' ? getMonthlyConsumption() : getAnnualConsumption();
-  const getUnit = (t: string) => t === 'Áram' ? 'kWh' : t === 'Üzemanyag' ? 'Ft' : 'm³';
-  const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : '⛽';
-  const getColor = (t: string) => t === 'Áram' ? '#fbbf24' : t === 'Víz' ? '#38bdf8' : t === 'Gáz' ? '#f87171' : '#a855f7';
-
-  return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <div className="app-wrapper">
-        <header className="main-header">
-          <h1 className="logo">Rezsiapp</h1>
-          {user && (
-            <div className="user-info">
-              <img src={user.picture} alt="Profil" />
-              <button className="btn-logout" onClick={handleLogout}>Kilépés</button>
-            </div>
-          )}
-        </header>
-
-        {!user ? (
-          <section className="card login-card">
-            <h2>Üdvözöljük a Rezsiappban!</h2>
-            <p className="login-desc">
-              Az alkalmazás használatához biztonságos Google-bejelentkezés szükséges. 
-              Adataidat védett módon, a saját fiókodhoz kötve tároljuk.
-            </p>
-            <div className="google-btn-container">
-              <GoogleLogin onSuccess={handleLoginSuccess} onError={() => alert('Hiba')} />
-            </div>
-          </section>
-        ) : (
-          <>
-            <div className="top-row">
-              <section className="card share-card compact">
-                <div className="view-selector">
-                  <select value={viewingUserId || ''} onChange={(e) => handleUserChange(e.target.value)}>
-                    <option value={user.sub}>Saját adataim</option>
-                    {sharedWithMe.map((s: any) => (
-                      <option key={s.owner_id} value={s.owner_id}>🏠 {s.owner_email}</option>
-                    ))}
-                  </select>
-                </div>
-                {viewingUserId === user.sub && (
-                  <div className="share-input-group">
-                    <input type="email" placeholder="Megosztás..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
-                    <button className="btn-share" onClick={handleShare}>+</button>
-                  </div>
-                )}
-              </section>
-            </div>
-
-            {viewingUserId === user.sub && (
-              <section className="card main-card">
-                <div className="input-row">
-                  <div className="input-field">
-                    <select value={type} onChange={(e) => setType(e.target.value)}>
-                      <option value="Áram">⚡ Áram</option>
-                      <option value="Víz">💧 Víz</option>
-                      <option value="Gáz">🔥 Gáz</option>
-                      <option value="Üzemanyag">⛽ Üzemanyag</option>
-                    </select>
-                  </div>
-                  <div className="input-field"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
-                  <div className="input-field"><input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" /></div>
-                </div>
-                <button className="btn-primary" onClick={handleSave}>Mentés</button>
-              </section>
-            )}
-
-            <div className="controls-bar">
-              <div className="filter-buttons">
-                {['Áram', 'Víz', 'Gáz', 'Üzemanyag'].map(f => (
-                  <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>
-                      {getIcon(f)} {f}
-                  </button>
-                ))}
-              </div>
-              <div className="view-toggle">
-                <button className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>Napi</button>
-                <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
-                <button className={viewMode === 'annual' ? 'active' : ''} onClick={() => setViewMode('annual')}>Éves</button>
-              </div>
-            </div>
-
-            <section className="card chart-card">
-              <div style={{ width: '100%', height: 300 }}>
-                <ResponsiveContainer>
-                  {viewMode === 'daily' ? (
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
-                      <YAxis stroke="#94a3b8" fontSize={10} />
-                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
-                      <Line type="monotone" dataKey="ertek" stroke={getColor(filter)} strokeWidth={3} dot={{r: 4}} />
-                    </LineChart>
-                  ) : (
-                    <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
-                      <YAxis stroke="#94a3b8" fontSize={10} />
-                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} itemStyle={{color: '#f8fafc'}} formatter={(v: any) => [`${v.toLocaleString()} ${getUnit(filter)}`, 'Összesen']} />
-                      <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>
-                        {chartData.map((e, i) => <Cell key={i} fill={getColor(filter)} />)}
-                      </Bar>
-                    </BarChart>
-                  )}
-                </ResponsiveContainer>
-              </div>
-            </section>
-
-            {/* ADATOK SZEKCIÓ CÍMMEL ÉS GÖRGETÉSSEL */}
-            <section className="list-section">
-              <h3 className="section-title">Rögzített adatok</h3>
-              <div className="list-container">
-                <div className="records-grid">
-                  {currentTypeRecords.slice().reverse().map((rec: any) => (
-                    <div key={rec.Id} className={`record-item ${rec.Type}`}>
-                      <div className="record-info">
-                        <span>{getIcon(rec.Type)} {rec.Type} - {rec.FormattedDate}</span>
-                      </div>
-                      <div className="record-value-container">
-                        <span className="record-value">{parseFloat(rec.Value).toLocaleString()} {getUnit(rec.Type)}</span>
-                        {viewingUserId === user.sub && (
-                          <button className="btn-delete" onClick={() => handleDelete(rec.Id)}>❌</button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-          </>
-        )}
-      </div>
+    return Object.keys(annualSum).sort
