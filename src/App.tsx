@@ -96,7 +96,6 @@ function App() {
     fetchAll(user.token, newId);
   };
 
-  // --- GRAFIKON ADATOK ---
   const getChartData = () => {
     if (displayMode === 'cost' && viewMode === 'daily') return [];
     const keyLen = viewMode === 'monthly' ? 7 : 4;
@@ -131,6 +130,7 @@ function App() {
 
   const finalData = getChartData();
   const getUnit = () => displayMode === 'cost' ? 'Ft' : (filter === 'Áram' ? 'kWh' : 'm³');
+  const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : t === 'Üzemanyag' ? '⛽' : '📊';
   const getColor = () => {
     if (displayMode === 'cost') return filter === 'Összes' ? '#6366f1' : '#10b981';
     if (filter === 'Áram') return '#fbbf24';
@@ -162,8 +162,8 @@ function App() {
             <div className="top-row">
               <section className="card share-card compact">
                 <select value={viewingUserId || ''} onChange={(e) => handleUserChange(e.target.value)}>
-                  <option value={user.sub}>Saját adataim</option>
-                  {sharedWithMe.map((s: any) => (<option key={s.owner_id} value={s.owner_id}>🏠 {s.owner_email}</option>))}
+                  <option value={user.sub}>🏠 Saját adataim</option>
+                  {sharedWithMe.map((s: any) => (<option key={s.owner_id} value={s.owner_id}>🤝 {s.owner_email}</option>))}
                 </select>
               </section>
             </div>
@@ -171,15 +171,18 @@ function App() {
             {viewingUserId === user.sub && (
               <section className="card record-card">
                 <div className="record-type-toggle">
-                  <button className={recordMode === 'meter' && type !== 'Üzemanyag' ? 'active' : ''} disabled={type === 'Üzemanyag'} onClick={() => setRecordMode('meter')}>Mérőóra</button>
-                  <button className={recordMode === 'invoice' || type === 'Üzemanyag' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>Számla</button>
+                  <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => { setRecordMode('meter'); if(type==='Üzemanyag') setType('Áram'); }}>📟 Mérőóra</button>
+                  <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>💰 Számla</button>
                 </div>
                 <div className="input-row">
                   <select value={type} onChange={(e) => { setType(e.target.value); if(e.target.value==='Üzemanyag') setRecordMode('invoice'); }}>
-                    <option value="Áram">⚡ Áram</option><option value="Víz">💧 Víz</option><option value="Gáz">🔥 Gáz</option><option value="Üzemanyag">⛽ Üzemanyag</option>
+                    <option value="Áram">⚡ Áram</option>
+                    <option value="Víz">💧 Víz</option>
+                    <option value="Gáz">🔥 Gáz</option>
+                    {recordMode === 'invoice' && <option value="Üzemanyag">⛽ Üzemanyag</option>}
                   </select>
-                  {recordMode === 'meter' && type !== 'Üzemanyag' ? (<input type="date" value={date} onChange={(e) => setDate(e.target.value)} />) : (<input type="month" value={invoiceMonth} onChange={(e) => setInvoiceMonth(e.target.value)} />)}
-                  <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték / Összeg" />
+                  {recordMode === 'meter' ? (<input type="date" value={date} onChange={(e) => setDate(e.target.value)} />) : (<input type="month" value={invoiceMonth} onChange={(e) => setInvoiceMonth(e.target.value)} />)}
+                  <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder={recordMode === 'meter' ? "Mérőállás" : "Összeg (Ft)"} />
                 </div>
                 <button className="btn-primary" onClick={handleSave}>Mentés</button>
               </section>
@@ -189,7 +192,7 @@ function App() {
               <div className="filter-buttons">
                 {['Áram', 'Víz', 'Gáz', 'Üzemanyag'].map(f => (
                   <button key={f} className={filter === f ? 'active' : ''} onClick={() => { setFilter(f); if(f==='Üzemanyag') setDisplayMode('cost'); }} style={filter === f ? {backgroundColor: getColor(), borderColor: getColor()} : {}}>
-                    {f}
+                    {getIcon(f)} {f}
                   </button>
                 ))}
                 {displayMode === 'cost' && (<button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? '#6366f1' : ''}}>📊 Összes</button>)}
