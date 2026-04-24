@@ -43,7 +43,7 @@ function App() {
       setRecords(Array.isArray(recData) ? recData : []);
       setInvoices(Array.isArray(invData) ? invData : []);
       setSharedWithMe(Array.isArray(shrData) ? shrData : []);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("Hiba az adatok frissítésekor"); }
   };
 
   useEffect(() => {
@@ -88,18 +88,23 @@ function App() {
         body: JSON.stringify(body)
       });
       if (res.ok) { setValue(''); fetchAll(user.token); }
-    } catch (err) { alert("Hiba!"); }
+    } catch (err) { alert("Hiba a mentéskor"); }
   };
 
   const handleDelete = async (id: number, listType: 'meter' | 'invoice') => {
-    if (!window.confirm("Biztosan törlöd?") || !user) return;
+    if (!window.confirm("Biztosan törlöd ezt a tételt?") || !user) return;
     const endpoint = listType === 'meter' ? `/api/records/${id}` : `/api/invoices/${id}`;
-    // Megjegyzés: Számla törléshez a backendnek támogatnia kell ezt az útvonalat
-    await fetch(`${BACKEND_URL}${endpoint}`, { 
+    
+    const res = await fetch(`${BACKEND_URL}${endpoint}`, { 
       method: 'DELETE', 
       headers: { 'Authorization': `Bearer ${user.token}` } 
     });
-    fetchAll(user.token);
+    
+    if (res.ok) {
+      fetchAll(user.token);
+    } else {
+      alert("Hiba a törlés során!");
+    }
   };
 
   const handleUserChange = (newId: string) => {
@@ -279,7 +284,7 @@ function App() {
                     <div className="record-value-container">
                       <span className="record-value">{parseFloat(item.Value).toLocaleString()} {item.lType === 'meter' ? (item.Type === 'Áram' ? 'kWh' : 'm³') : 'Ft'}</span>
                       {viewingUserId === user.sub && (
-                        <button className="btn-delete" onClick={() => handleDelete(item.Id, item.lType)}>❌</button>
+                        <button className="btn-delete" onClick={() => handleDelete(item.Id || item.id, item.lType)}>❌</button>
                       )}
                     </div>
                   </div>
