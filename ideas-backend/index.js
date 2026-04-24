@@ -19,9 +19,46 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
 });
 
+// --- AUTENTIKÁCIÓS MIDDLEWARE (Cron-job barát verzió) ---
+async function verifyUser(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const cronKey = req.headers['x-cron-key'];
+  
+  // 1. Megnézzük, hogy a Cron-job küldte-e a titkos kulcsot
+  // Javaslat: A kódban lévő értéket cseréld le process.env.CRON_SECRET-re a Render-en!
+  const SAFE_CRON_KEY = process.env.CRON_SECRET || "SzuperTitkosCronKulcs123_2026";
+  
+  if (cronKey && cronKey === SAFE_CRON_KEY) {
+    req.userId = "CRON_ADMIN"; // Fiktív ID a rendszernek
+    req.userEmail = "cron@rezsiapp.system";
+    return next();
+  }
+
+  // 2. Ha nem cron-job, akkor Google Auth ellenőrzés
+  if (!authHeader) return res.status(401).send('Nincs token!');
+  
+  const token = authHeader.split(' ')[1];
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    req.userId = payload.sub;
+    req.userEmail = payload.email;
+    next();
+  } catch (err) {
+    res.status(401).send('Érvénytelen munkamenet');
+  }
+}
+
+// --- PUBLIKUS ÚTVONAL ÉBRESZTÉSHEZ ---
+app.get('/ping', (req, res) => {
+  res.send('Szerver ébren van! 🚀');
+});
+
 // --- SZÁMLÁK KEZELÉSE ---
 
-// 1. Számlák lekérése
 app.get('/api/invoices', verifyUser, async (req, res) => {
   const targetUserId = req.query.userId || req.userId;
   try {
@@ -34,7 +71,7 @@ app.get('/api/invoices', verifyUser, async (req, res) => {
     res.status(500).json({ error: 'Hiba a számlák lekérésekor' });
   }
 });
-// Számla törlése
+
 app.delete('/api/invoices/:id', verifyUser, async (req, res) => {
   const { id } = req.params;
   try {
@@ -42,18 +79,15 @@ app.delete('/api/invoices/:id', verifyUser, async (req, res) => {
       'DELETE FROM invoices WHERE Id = ? AND UserId = ?',
       [id, req.userId]
     );
-    
     if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Számla nem található vagy nincs jogosultság a törléshez' });
+      return res.status(404).json({ error: 'Számla nem található vagy nincs jogosultság' });
     }
-    
     res.json({ success: true, message: 'Számla sikeresen törölve' });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: 'Hiba történt a törlés során' });
   }
 });
-// 2. Számla mentése vagy frissítése
+
 app.post('/api/invoices', verifyUser, async (req, res) => {
   const { type, amount, month } = req.body;
   try {
@@ -69,41 +103,17 @@ app.post('/api/invoices', verifyUser, async (req, res) => {
   }
 });
 
-// TOKEN ELLENŐRZÉS + EMAIL CÍM KINYERÉSE
-async function verifyUser(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).send('Nincs token!');
-  const token = authHeader.split(' ')[1];
-  try {
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    req.userId = payload.sub;
-    req.userEmail = payload.email; // Fontos a megosztáshoz!
-    next();
-  } catch (err) {
-    res.status(401).send('Érvénytelen munkamenet');
-  }
-}
+// --- MÉRŐÓRA REKORDOK KEZELÉSE ---
 
-// 1. LEKÉRDEZÉS (Saját VAGY Megosztott)
 app.get('/api/records', verifyUser, async (req, res) => {
   const targetUserId = req.query.userId || req.userId;
-  
   try {
-    // Ha nem a sajátját kéri, ellenőrizzük a megosztást
-    if (targetUserId !== req.userId) {
+    if (targetUserId !== req.userId && req.userId !== "CRON_ADMIN") {
       const [shares] = await pool.query(
         'SELECT id FROM shares WHERE owner_id = ? AND shared_with_email = ?',
         [targetUserId, req.userEmail]
       );
-      
-      if (shares.length === 0) {
-        console.log(`Hozzáférés megtagadva: ${req.userEmail} -> ${targetUserId}`);
-        return res.status(403).json({ error: 'Nincs jogosultságod' });
-      }
+      if (shares.length === 0) return res.status(403).json({ error: 'Nincs jogosultságod' });
     }
 
     const [rows] = await pool.query(
@@ -112,12 +122,10 @@ app.get('/api/records', verifyUser, async (req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: 'DB hiba' });
   }
 });
 
-// 2. MENTÉS (Mindig a saját UserId-hoz)
 app.post('/api/records', verifyUser, async (req, res) => {
   const { type, value, date } = req.body;
   try {
@@ -127,11 +135,21 @@ app.post('/api/records', verifyUser, async (req, res) => {
     );
     res.status(201).json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: 'Hiba' });
+    res.status(500).json({ error: 'Hiba mentéskor' });
   }
 });
 
-// 3. MEGOSZTÁS LÉTREHOZÁSA
+app.delete('/api/records/:id', verifyUser, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM utility_records WHERE Id = ? AND UserId = ?', [req.params.id, req.userId]);
+    res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: 'Hiba törléskor' });
+  }
+});
+
+// --- MEGOSZTÁSOK ---
+
 app.post('/api/shares', verifyUser, async (req, res) => {
   const { sharedWithEmail } = req.body;
   try {
@@ -145,7 +163,6 @@ app.post('/api/shares', verifyUser, async (req, res) => {
   }
 });
 
-// 4. KIK OSZTOTTÁK MEG VELEM
 app.get('/api/shares/me', verifyUser, async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -153,16 +170,6 @@ app.get('/api/shares/me', verifyUser, async (req, res) => {
       [req.userEmail]
     );
     res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: 'Hiba' });
-  }
-});
-
-// 5. TÖRLÉS
-app.delete('/api/records/:id', verifyUser, async (req, res) => {
-  try {
-    await pool.query('DELETE FROM utility_records WHERE Id = ? AND UserId = ?', [req.params.id, req.userId]);
-    res.status(204).end();
   } catch (err) {
     res.status(500).json({ error: 'Hiba' });
   }
