@@ -78,17 +78,28 @@ function App() {
   const handleSave = async () => {
     if (!user || !value) return alert("Adj meg egy értéket!");
     try {
-      const isInvoice = recordMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
-      const body = isInvoice 
+      const isInv = recordMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
+      const body = isInv 
         ? { type, amount: parseFloat(value), month: invoiceMonth }
         : { type, value: parseFloat(value), date };
-      const res = await fetch(`${BACKEND_URL}${isInvoice ? '/api/invoices' : '/api/records'}`, {
+      const res = await fetch(`${BACKEND_URL}${isInv ? '/api/invoices' : '/api/records'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
         body: JSON.stringify(body)
       });
       if (res.ok) { setValue(''); fetchAll(user.token); }
     } catch (err) { alert("Hiba!"); }
+  };
+
+  const handleDelete = async (id: number, listType: 'meter' | 'invoice') => {
+    if (!window.confirm("Biztosan törlöd?") || !user) return;
+    const endpoint = listType === 'meter' ? `/api/records/${id}` : `/api/invoices/${id}`;
+    // Megjegyzés: Számla törléshez a backendnek támogatnia kell ezt az útvonalat
+    await fetch(`${BACKEND_URL}${endpoint}`, { 
+      method: 'DELETE', 
+      headers: { 'Authorization': `Bearer ${user.token}` } 
+    });
+    fetchAll(user.token);
   };
 
   const handleUserChange = (newId: string) => {
@@ -133,13 +144,9 @@ function App() {
   
   const getIcon = (t: string) => {
     switch(t) {
-      case 'Áram': return '⚡';
-      case 'Víz': return '💧';
-      case 'Gáz': return '🔥';
-      case 'Üzemanyag': return '⛽';
-      case 'Internet': return '🌐';
-      case 'Szemétszállítás': return '🗑️';
-      case 'Összes': return '📊';
+      case 'Áram': return '⚡'; case 'Víz': return '💧'; case 'Gáz': return '🔥';
+      case 'Üzemanyag': return '⛽'; case 'Internet': return '🌐'; 
+      case 'Szemétszállítás': return '🗑️'; case 'Összes': return '📊';
       default: return '📄';
     }
   };
@@ -148,18 +155,18 @@ function App() {
     if (displayMode === 'cost' && t !== 'Összes') return '#10b981';
     if (t === 'Összes') return '#6366f1';
     switch(t) {
-      case 'Áram': return '#fbbf24';
-      case 'Víz': return '#38bdf8';
-      case 'Gáz': return '#f87171';
-      case 'Üzemanyag': return '#a855f7';
-      case 'Internet': return '#ec4899';
-      case 'Szemétszállítás': return '#94a3b8';
-      default: return '#3b82f6';
+      case 'Áram': return '#fbbf24'; case 'Víz': return '#38bdf8'; case 'Gáz': return '#f87171';
+      case 'Üzemanyag': return '#a855f7'; case 'Internet': return '#ec4899';
+      case 'Szemétszállítás': return '#94a3b8'; default: return '#3b82f6';
     }
   };
 
-  const isMeterOnly = (t: string) => ['Áram', 'Víz', 'Gáz'].includes(t);
   const isInvoiceOnly = (t: string) => ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(t);
+
+  const combinedList = [
+    ...(filter === 'Összes' ? [] : records.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter' }))),
+    ...invoices.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, FormattedDate: i.Month }))
+  ].sort((a, b) => new Date(b.FormattedDate).getTime() - new Date(a.FormattedDate).getTime());
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -193,37 +200,16 @@ function App() {
             {viewingUserId === user.sub && (
               <section className="card record-card">
                 <div className="record-type-toggle">
-                  <button className={recordMode === 'meter' ? 'active' : ''} 
-                          onClick={() => { setRecordMode('meter'); if(isInvoiceOnly(type)) setType('Áram'); }}>
-                    📟 Mérőóra
-                  </button>
-                  <button className={recordMode === 'invoice' ? 'active' : ''} 
-                          onClick={() => setRecordMode('invoice')}>
-                    💰 Számla
-                  </button>
+                  <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => { setRecordMode('meter'); if(isInvoiceOnly(type)) setType('Áram'); }}>📟 Mérőóra</button>
+                  <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>💰 Számla</button>
                 </div>
                 <div className="input-row">
-                  <select value={type} onChange={(e) => { 
-                    setType(e.target.value); 
-                    if(isInvoiceOnly(e.target.value)) setRecordMode('invoice'); 
-                  }}>
-                    <option value="Áram">⚡ Áram</option>
-                    <option value="Víz">💧 Víz</option>
-                    <option value="Gáz">🔥 Gáz</option>
-                    {recordMode === 'invoice' && (
-                      <>
-                        <option value="Üzemanyag">⛽ Üzemanyag</option>
-                        <option value="Internet">🌐 Internet</option>
-                        <option value="Szemétszállítás">🗑️ Szemét</option>
-                      </>
-                    )}
+                  <select value={type} onChange={(e) => { setType(e.target.value); if(isInvoiceOnly(e.target.value)) setRecordMode('invoice'); }}>
+                    <option value="Áram">⚡ Áram</option><option value="Víz">💧 Víz</option><option value="Gáz">🔥 Gáz</option>
+                    {recordMode === 'invoice' && (<><option value="Üzemanyag">⛽ Üzemanyag</option><option value="Internet">🌐 Internet</option><option value="Szemétszállítás">🗑️ Szemét</option></>)}
                   </select>
-                  {recordMode === 'meter' ? (
-                    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-                  ) : (
-                    <input type="month" value={invoiceMonth} onChange={(e) => setInvoiceMonth(e.target.value)} />
-                  )}
-                  <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Összeg vagy Állás" />
+                  {recordMode === 'meter' ? (<input type="date" value={date} onChange={(e) => setDate(e.target.value)} />) : (<input type="month" value={invoiceMonth} onChange={(e) => setInvoiceMonth(e.target.value)} />)}
+                  <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték / Összeg" />
                 </div>
                 <button className="btn-primary" onClick={handleSave}>Mentés</button>
               </section>
@@ -232,31 +218,15 @@ function App() {
             <div className="controls-bar">
               <div className="filter-buttons">
                 {['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'].map(f => (
-                  <button key={f} 
-                          className={filter === f ? 'active' : ''} 
-                          onClick={() => { setFilter(f); if(isInvoiceOnly(f)) setDisplayMode('cost'); }} 
-                          style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>
+                  <button key={f} className={filter === f ? 'active' : ''} onClick={() => { setFilter(f); if(isInvoiceOnly(f)) setDisplayMode('cost'); }} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>
                     {getIcon(f)} {f}
                   </button>
                 ))}
-                {displayMode === 'cost' && (
-                  <button className={filter === 'Összes' ? 'active' : ''} 
-                          onClick={() => setFilter('Összes')} 
-                          style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>
-                    {getIcon('Összes')} Összes
-                  </button>
-                )}
+                {displayMode === 'cost' && (<button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>{getIcon('Összes')} Összes</button>)}
               </div>
               <div className="mode-toggle">
-                <button className={displayMode === 'usage' ? 'active' : ''} 
-                        disabled={isInvoiceOnly(filter) || filter === 'Összes'} 
-                        onClick={() => setDisplayMode('usage')}>
-                  Fogyasztás
-                </button>
-                <button className={displayMode === 'cost' ? 'active' : ''} 
-                        onClick={() => setDisplayMode('cost')}>
-                  Költség (Ft)
-                </button>
+                <button className={displayMode === 'usage' ? 'active' : ''} disabled={isInvoiceOnly(filter) || filter === 'Összes'} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
+                <button className={displayMode === 'cost' ? 'active' : ''} onClick={() => setDisplayMode('cost')}>Költség (Ft)</button>
               </div>
               <div className="view-toggle">
                 <button disabled={displayMode === 'cost'} className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>Napi</button>
@@ -295,6 +265,25 @@ function App() {
                     )}
                   </ResponsiveContainer>
                 )}
+              </div>
+            </section>
+
+            <section className="list-section">
+              <h3 className="section-title">Adatok: {filter}</h3>
+              <div className="list-container">
+                {combinedList.length === 0 ? <p className="no-data-msg">Nincs rögzített adat.</p> : combinedList.map((item: any, idx) => (
+                  <div key={idx} className={`record-item ${item.Type} ${item.lType}`}>
+                    <div className="record-info">
+                      <span>{item.lType === 'meter' ? '📟 Állás' : '💰 Számla'} - {item.FormattedDate} ({item.Type})</span>
+                    </div>
+                    <div className="record-value-container">
+                      <span className="record-value">{parseFloat(item.Value).toLocaleString()} {item.lType === 'meter' ? (item.Type === 'Áram' ? 'kWh' : 'm³') : 'Ft'}</span>
+                      {viewingUserId === user.sub && (
+                        <button className="btn-delete" onClick={() => handleDelete(item.Id, item.lType)}>❌</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
           </>
