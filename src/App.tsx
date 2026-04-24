@@ -16,14 +16,14 @@ function App() {
   const [invoices, setInvoices] = useState([]);
   const [sharedWithMe, setSharedWithMe] = useState([]);
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  const [shareEmail, setShareEmail] = useState('');
   
   const [type, setType] = useState('Áram');
   const [value, setValue] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [filter, setFilter] = useState('Áram');
   const [viewMode, setViewMode] = useState('daily');
-  
-  const [shareEmail, setShareEmail] = useState('');
+
   const [invoiceAmount, setInvoiceAmount] = useState('');
   const [invoiceMonth, setInvoiceMonth] = useState(new Date().toISOString().substring(0, 7));
 
@@ -101,7 +101,7 @@ function App() {
       });
       setValue('');
       fetchRecords(user.token);
-    } catch (err) { alert("Hiba"); }
+    } catch (err) { alert("Hiba a mentés során!"); }
   };
 
   const handleInvoiceSave = async () => {
@@ -116,7 +116,18 @@ function App() {
         setInvoiceAmount('');
         fetchInvoices(user.token);
       }
-    } catch (err) { alert("Hiba"); }
+    } catch (err) { alert("Hiba a számla mentésekor!"); }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Biztosan törlöd?") || !user) return;
+    try {
+      await fetch(`${BACKEND_URL}/api/records/${id}`, { 
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${user.token}` }
+      });
+      fetchRecords(user.token);
+    } catch (err) { alert("Hiba a törlés során!"); }
   };
 
   const handleShare = async () => {
@@ -128,7 +139,7 @@ function App() {
         body: JSON.stringify({ sharedWithEmail: shareEmail.toLowerCase() })
       });
       if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
-    } catch (err) { alert("Hiba"); }
+    } catch (err) { alert("Hiba a megosztáskor!"); }
   };
 
   const handleUserChange = (newId: string) => {
@@ -137,22 +148,12 @@ function App() {
     fetchInvoices(user.token, newId);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm("Biztosan törlöd?") || !user) return;
-    try {
-      await fetch(`${BACKEND_URL}/api/records/${id}`, { 
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${user.token}` }
-      });
-      fetchRecords(user.token);
-    } catch (err) { alert("Hiba"); }
-  };
-
-  // ADATFELDOLGOZÁS
   const currentTypeRecords = records.filter((r: any) => r.Type === filter)
     .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
 
-  const getMonthlyData = () => {
+  // --- GRAFIKON ADATOK ---
+
+  const getMonthlyConsumption = () => {
     const monthlySum: { [key: string]: number } = {};
     if (filter === 'Üzemanyag') {
       currentTypeRecords.forEach((r: any) => {
@@ -162,7 +163,7 @@ function App() {
     } else {
       for (let i = 1; i < currentTypeRecords.length; i++) {
         const curV = parseFloat(currentTypeRecords[i].Value);
-        const preV = parseFloat(currentTypeRecords[i-1].Value);
+        const preV = parseFloat(currentTypeRecords[i-1].Value); // JAVÍTVA: i-1 kell!
         if (curV >= preV) {
           const mKey = currentTypeRecords[i].FormattedDate.substring(0, 7);
           monthlySum[mKey] = (monthlySum[mKey] || 0) + (curV - preV);
@@ -171,11 +172,11 @@ function App() {
     }
     return Object.keys(monthlySum).sort().map(m => {
       const inv = invoices.find((f: any) => f.Month === m && f.Type === filter);
-      return { label: m, ertek: Math.round(monthlySum[m] * 100) / 100, szamla: inv ? inv.Amount : 0 };
+      return { label: m, ertek: Math.round(monthlySum[m] * 100) / 100, szamla: inv ? parseFloat(inv.Amount) : 0 };
     });
   };
 
-  const getAnnualData = () => {
+  const getAnnualConsumption = () => {
     const annualSum: { [key: string]: number } = {};
     if (filter === 'Üzemanyag') {
       currentTypeRecords.forEach((r: any) => {
@@ -185,7 +186,7 @@ function App() {
     } else {
       for (let i = 1; i < currentTypeRecords.length; i++) {
         const curV = parseFloat(currentTypeRecords[i].Value);
-        const preV = parseFloat(currentTypeRecords[i-1].Value);
+        const preV = parseFloat(currentTypeRecords[i-1].Value); // JAVÍTVA: i-1 kell!
         if (curV >= preV) {
           const yKey = currentTypeRecords[i].FormattedDate.substring(0, 4);
           annualSum[yKey] = (annualSum[yKey] || 0) + (curV - preV);
@@ -197,7 +198,7 @@ function App() {
 
   const chartData = viewMode === 'daily' 
     ? currentTypeRecords.map((r: any) => ({ label: r.FormattedDate.split(' ')[0], ertek: parseFloat(r.Value) }))
-    : viewMode === 'monthly' ? getMonthlyData() : getAnnualData();
+    : viewMode === 'monthly' ? getMonthlyConsumption() : getAnnualConsumption();
 
   const getUnit = (t: string) => t === 'Áram' ? 'kWh' : t === 'Üzemanyag' ? 'Ft' : 'm³';
   const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : '⛽';
@@ -209,9 +210,11 @@ function App() {
         <header className="main-header">
           <h1 className="logo">Rezsiapp</h1>
           {user && (
-            <div className="user-info">
-              <img src={user.picture} alt="Profil" />
-              <button className="btn-logout" onClick={handleLogout}>Kilépés</button>
+            <div className="header-actions">
+              <div className="user-info">
+                <img src={user.picture} alt="Profil" />
+                <button className="btn-logout" onClick={handleLogout}>Kilépés</button>
+              </div>
             </div>
           )}
         </header>
@@ -250,3 +253,104 @@ function App() {
                 <div className="input-row">
                   <div className="input-field">
                     <select value={type} onChange={(e) => setType(e.target.value)}>
+                      <option value="Áram">⚡ Áram</option>
+                      <option value="Víz">💧 Víz</option>
+                      <option value="Gáz">🔥 Gáz</option>
+                      <option value="Üzemanyag">⛽ Üzemanyag</option>
+                    </select>
+                  </div>
+                  <div className="input-field"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+                  <div className="input-field"><input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" /></div>
+                </div>
+                <button className="btn-primary" onClick={handleSave}>Mentés</button>
+              </section>
+            )}
+
+            {viewMode === 'monthly' && viewingUserId === user.sub && (
+              <section className="card invoice-card">
+                <h3>{filter} számla rögzítése</h3>
+                <div className="share-input-group">
+                  <input type="month" value={invoiceMonth} onChange={(e) => setInvoiceMonth(e.target.value)} />
+                  <input type="number" placeholder="Összeg (Ft)" value={invoiceAmount} onChange={(e) => setInvoiceAmount(e.target.value)} />
+                  <button className="btn-share" onClick={handleInvoiceSave}>Mentés</button>
+                </div>
+              </section>
+            )}
+
+            <div className="controls-bar">
+              <div className="filter-buttons">
+                {['Áram', 'Víz', 'Gáz', 'Üzemanyag'].map(f => (
+                  <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>
+                      {getIcon(f)} {f}
+                  </button>
+                ))}
+              </div>
+              <div className="view-toggle">
+                <button className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>Napi</button>
+                <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
+                <button className={viewMode === 'annual' ? 'active' : ''} onClick={() => setViewMode('annual')}>Éves</button>
+              </div>
+            </div>
+
+            <section className="card chart-card">
+              <div style={{ width: '100%', height: 300 }}>
+                <ResponsiveContainer>
+                  {viewMode === 'daily' ? (
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                      <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
+                      <YAxis stroke="#94a3b8" fontSize={10} />
+                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
+                      <Line type="monotone" dataKey="ertek" stroke={getColor(filter)} strokeWidth={3} dot={{r: 4, fill: getColor(filter)}} />
+                    </LineChart>
+                  ) : (
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                      <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
+                      <YAxis stroke="#94a3b8" fontSize={10} />
+                      <Tooltip 
+                        contentStyle={{backgroundColor: '#1e293b', border: 'none'}} 
+                        itemStyle={{color: '#f8fafc'}} 
+                        formatter={(v: any, name: any) => [
+                          name === 'ertek' ? `${v.toLocaleString()} ${getUnit(filter)}` : `${v.toLocaleString()} Ft`,
+                          name === 'ertek' ? 'Fogyasztás' : 'Számla'
+                        ]}
+                      />
+                      <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>
+                        {chartData.map((e: any, i: number) => <Cell key={i} fill={getColor(filter)} />)}
+                      </Bar>
+                      {viewMode === 'monthly' && <Bar dataKey="szamla" fill="#10b981" radius={[4, 4, 0, 0]} />}
+                    </BarChart>
+                  )}
+                </ResponsiveContainer>
+              </div>
+            </section>
+
+            <section className="list-section">
+              <h3 className="section-title">Rögzített adatok</h3>
+              <div className="list-container">
+                <div className="records-grid">
+                  {currentTypeRecords.slice().reverse().map((rec: any) => (
+                    <div key={rec.Id} className={`record-item ${rec.Type}`}>
+                      <div className="record-info">
+                        <span>{getIcon(rec.Type)} {rec.Type} - {rec.FormattedDate}</span>
+                      </div>
+                      <div className="record-value-container">
+                        <span className="record-value">{parseFloat(rec.Value).toLocaleString()} {getUnit(rec.Type)}</span>
+                        {viewingUserId === user.sub && (
+                          <button className="btn-delete" onClick={() => handleDelete(rec.Id)}>❌</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+      </div>
+    </GoogleOAuthProvider>
+  );
+}
+
+export default App;
