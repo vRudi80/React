@@ -82,7 +82,7 @@ function App() {
         body: JSON.stringify({ sharedWithEmail: shareEmail.toLowerCase() })
       });
       if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
-    } catch (err) { alert("Hiba a megosztáskor"); }
+    } catch (err) { alert("Hiba"); }
   };
 
   const handleUserChange = (newId: string) => {
@@ -202,7 +202,7 @@ function App() {
                 </div>
                 {viewingUserId === user.sub && (
                   <div className="share-input-group">
-                    <input type="email" placeholder="Megosztás (email)..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
+                    <input type="email" placeholder="Megosztás..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
                     <button className="btn-share" onClick={handleShare}>+</button>
                   </div>
                 )}
@@ -258,7 +258,7 @@ function App() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                       <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
                       <YAxis stroke="#94a3b8" fontSize={10} />
-                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} formatter={(v: any) => [`${v.toLocaleString()} ${getUnit(filter)}`, 'Összesen']} />
+                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} itemStyle={{color: '#f8fafc'}} formatter={(v: any) => [`${v.toLocaleString()} ${getUnit(filter)}`, 'Összesen']} />
                       <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>
                         {chartData.map((e, i) => <Cell key={i} fill={getColor(filter)} />)}
                       </Bar>
@@ -268,28 +268,27 @@ function App() {
               </div>
             </section>
 
+            {/* ADATOK SZEKCIÓ CÍMMEL ÉS GÖRGETÉSSEL */}
             <section className="list-section">
-              <div className="records-grid">
-                {currentTypeRecords.slice().reverse().map((rec: any) => (
-                  <div key={rec.Id} className={`record-item ${rec.Type}`}>
-                    <div className="record-info">
-                      <span>{getIcon(rec.Type)} {rec.Type} - {rec.FormattedDate}</span>
+              <h3 className="section-title">Rögzített adatok</h3>
+              <div className="list-container">
+                <div className="records-grid">
+                  {currentTypeRecords.slice().reverse().map((rec: any) => (
+                    <div key={rec.Id} className={`record-item ${rec.Type}`}>
+                      <div className="record-info">
+                        <span>{getIcon(rec.Type)} {rec.Type} - {rec.FormattedDate}</span>
+                      </div>
+                      <div className="record-value-container">
+                        <span className="record-value">{parseFloat(rec.Value).toLocaleString()} {getUnit(rec.Type)}</span>
+                        {viewingUserId === user.sub && (
+                          <button className="btn-delete" onClick={() => handleDelete(rec.Id)}>❌</button>
+                        )}
+                      </div>
                     </div>
-                    <div className="record-value-container">
-                      <span className="record-value">{parseFloat(rec.Value).toLocaleString()} {getUnit(rec.Type)}</span>
-                      {viewingUserId === user.sub && (
-                        <button className="btn-delete" onClick={() => handleDelete(rec.Id)}>❌</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </section>
           </>
         )}
       </div>
-    </GoogleOAuthProvider>
-  );
-}
-
-export default App;
