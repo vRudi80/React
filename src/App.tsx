@@ -21,7 +21,7 @@ function App() {
   const [value, setValue] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [filter, setFilter] = useState('Áram');
-  const [viewMode, setViewMode] = useState('daily'); // 'daily', 'monthly', 'annual'
+  const [viewMode, setViewMode] = useState('daily');
 
   const fetchRecords = async (token: string, targetId?: string) => {
     const idToFetch = targetId || viewingUserId || user?.sub;
@@ -109,66 +109,60 @@ function App() {
   // NAPI ADATOK
   const dailyData = currentTypeRecords.map((r: any) => ({ label: r.FormattedDate.split(' ')[0], ertek: parseFloat(r.Value) }));
 
-  // HAVI ADATOK
+  // JAVÍTOTT HAVI FOGYASZTÁS (Összegző logika óracsere kezeléssel)
   const getMonthlyConsumption = () => {
+    const monthlySum: { [key: string]: number } = {};
     if (filter === 'Üzemanyag') {
-      const monthlySum: { [key: string]: number } = {};
       currentTypeRecords.forEach((r: any) => {
         const monthKey = r.FormattedDate.substring(0, 7);
         monthlySum[monthKey] = (monthlySum[monthKey] || 0) + parseFloat(r.Value);
       });
-      return Object.keys(monthlySum).sort().map(month => ({ label: month, ertek: monthlySum[month] }));
     } else {
-      const monthlyFirsts: { [key: string]: number } = {};
-      const monthlyLasts: { [key: string]: number } = {};
-      currentTypeRecords.forEach((r: any) => {
-        const monthKey = r.FormattedDate.substring(0, 7);
-        const val = parseFloat(r.Value);
-        if (monthlyFirsts[monthKey] === undefined) monthlyFirsts[monthKey] = val;
-        monthlyLasts[monthKey] = val;
-      });
-      const months = Object.keys(monthlyFirsts).sort();
-      return months.map((month, i) => {
-        const nextMonth = months[i + 1];
-        let consumption = 0;
-        if (nextMonth) {
-          const diff = monthlyFirsts[nextMonth] - monthlyFirsts[month];
-          consumption = diff >= 0 ? diff : (monthlyLasts[month] - monthlyFirsts[month]);
-        } else {
-          consumption = monthlyLasts[month] - monthlyFirsts[month];
+      for (let i = 1; i < currentTypeRecords.length; i++) {
+        const current = currentTypeRecords[i];
+        const prev = currentTypeRecords[i - 1];
+        const currentVal = parseFloat(current.Value);
+        const prevVal = parseFloat(prev.Value);
+        const monthKey = current.FormattedDate.substring(0, 7);
+
+        if (currentVal >= prevVal) {
+          const diff = currentVal - prevVal;
+          monthlySum[monthKey] = (monthlySum[monthKey] || 0) + diff;
         }
-        return { label: month, ertek: Math.round(consumption * 100) / 100 };
-      });
+      }
     }
+    return Object.keys(monthlySum).sort().map(month => ({ label: month, ertek: Math.round(monthlySum[month] * 100) / 100 }));
   };
 
-  // ÚJ: ÉVES ADATOK
+  // JAVÍTOTT ÉVES FOGYASZTÁS (Összegző logika óracsere kezeléssel)
   const getAnnualConsumption = () => {
-    const annualData: { [key: string]: number } = {};
+    const annualSum: { [key: string]: number } = {};
     
     if (filter === 'Üzemanyag') {
       currentTypeRecords.forEach((r: any) => {
         const yearKey = r.FormattedDate.substring(0, 4);
-        annualData[yearKey] = (annualData[yearKey] || 0) + parseFloat(r.Value);
+        annualSum[yearKey] = (annualSum[yearKey] || 0) + parseFloat(r.Value);
       });
     } else {
-      const yearlyFirsts: { [key: string]: number } = {};
-      const yearlyLasts: { [key: string]: number } = {};
-      currentTypeRecords.forEach((r: any) => {
-        const yearKey = r.FormattedDate.substring(0, 4);
-        const val = parseFloat(r.Value);
-        if (yearlyFirsts[yearKey] === undefined) yearlyFirsts[yearKey] = val;
-        yearlyLasts[yearKey] = val;
-      });
-      Object.keys(yearlyFirsts).forEach(year => {
-        const consumption = yearlyLasts[year] - yearlyFirsts[year];
-        annualData[year] = consumption >= 0 ? consumption : yearlyLasts[year];
-      });
+      // Végigfutunk a méréseken és összeadjuk a növekményeket évenként
+      for (let i = 1; i < currentTypeRecords.length; i++) {
+        const current = currentTypeRecords[i];
+        const prev = currentTypeRecords[i - 1];
+        const currentVal = parseFloat(current.Value);
+        const prevVal = parseFloat(prev.Value);
+        const yearKey = current.FormattedDate.substring(0, 4);
+
+        if (currentVal >= prevVal) {
+          const diff = currentVal - prevVal;
+          annualSum[yearKey] = (annualSum[yearKey] || 0) + diff;
+        }
+        // Ha currentVal < prevVal (óracsere), nem adunk hozzá semmit, csak megyünk tovább az új órától
+      }
     }
 
-    return Object.keys(annualData).sort().map(year => ({
+    return Object.keys(annualSum).sort().map(year => ({
       label: year,
-      ertek: Math.round(annualData[year] * 100) / 100
+      ertek: Math.round(annualSum[year] * 100) / 100
     }));
   };
 
