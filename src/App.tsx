@@ -21,9 +21,8 @@ function App() {
   const [value, setValue] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [filter, setFilter] = useState('Áram');
-  const [viewMode, setViewMode] = useState('daily');
+  const [viewMode, setViewMode] = useState('daily'); // 'daily', 'monthly', 'annual'
 
-  // Adatok lekérése (Saját vagy kiválasztott useré)
   const fetchRecords = async (token: string, targetId?: string) => {
     const idToFetch = targetId || viewingUserId || user?.sub;
     if (!idToFetch) return;
@@ -35,7 +34,6 @@ function App() {
     } catch (err) { console.error(err); }
   };
 
-  // Megosztások lekérése
   const fetchShares = async (token: string) => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/shares/me`, {
@@ -80,17 +78,11 @@ function App() {
     try {
       const res = await fetch(`${BACKEND_URL}/api/shares`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.token}` 
-        },
-        body: JSON.stringify({ sharedWithEmail: shareEmail })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+        body: JSON.stringify({ sharedWithEmail: shareEmail.toLowerCase() })
       });
-      if (res.ok) {
-        alert("Sikeres megosztás!");
-        setShareEmail('');
-      }
-    } catch (err) { alert("Hiba a megosztáskor"); }
+      if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
+    } catch (err) { alert("Hiba"); }
   };
 
   const handleUserChange = (newId: string) => {
@@ -111,12 +103,13 @@ function App() {
     } catch (err) { alert("Hiba"); }
   };
 
-  // --- Adatfeldolgozás ---
   const currentTypeRecords = records.filter((r: any) => r.Type === filter)
     .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
 
+  // NAPI ADATOK
   const dailyData = currentTypeRecords.map((r: any) => ({ label: r.FormattedDate.split(' ')[0], ertek: parseFloat(r.Value) }));
 
+  // HAVI ADATOK
   const getMonthlyConsumption = () => {
     if (filter === 'Üzemanyag') {
       const monthlySum: { [key: string]: number } = {};
@@ -124,7 +117,7 @@ function App() {
         const monthKey = r.FormattedDate.substring(0, 7);
         monthlySum[monthKey] = (monthlySum[monthKey] || 0) + parseFloat(r.Value);
       });
-      return Object.keys(monthlySum).sort().map(month => ({ honap: month, fogyasztas: monthlySum[month] }));
+      return Object.keys(monthlySum).sort().map(month => ({ label: month, ertek: monthlySum[month] }));
     } else {
       const monthlyFirsts: { [key: string]: number } = {};
       const monthlyLasts: { [key: string]: number } = {};
@@ -144,12 +137,43 @@ function App() {
         } else {
           consumption = monthlyLasts[month] - monthlyFirsts[month];
         }
-        return { honap: month, fogyasztas: Math.round(consumption * 100) / 100 };
+        return { label: month, ertek: Math.round(consumption * 100) / 100 };
       });
     }
   };
 
-  const monthlyData = getMonthlyConsumption();
+  // ÚJ: ÉVES ADATOK
+  const getAnnualConsumption = () => {
+    const annualData: { [key: string]: number } = {};
+    
+    if (filter === 'Üzemanyag') {
+      currentTypeRecords.forEach((r: any) => {
+        const yearKey = r.FormattedDate.substring(0, 4);
+        annualData[yearKey] = (annualData[yearKey] || 0) + parseFloat(r.Value);
+      });
+    } else {
+      const yearlyFirsts: { [key: string]: number } = {};
+      const yearlyLasts: { [key: string]: number } = {};
+      currentTypeRecords.forEach((r: any) => {
+        const yearKey = r.FormattedDate.substring(0, 4);
+        const val = parseFloat(r.Value);
+        if (yearlyFirsts[yearKey] === undefined) yearlyFirsts[yearKey] = val;
+        yearlyLasts[yearKey] = val;
+      });
+      Object.keys(yearlyFirsts).forEach(year => {
+        const consumption = yearlyLasts[year] - yearlyFirsts[year];
+        annualData[year] = consumption >= 0 ? consumption : yearlyLasts[year];
+      });
+    }
+
+    return Object.keys(annualData).sort().map(year => ({
+      label: year,
+      ertek: Math.round(annualData[year] * 100) / 100
+    }));
+  };
+
+  const chartData = viewMode === 'daily' ? dailyData : viewMode === 'monthly' ? getMonthlyConsumption() : getAnnualConsumption();
+
   const getUnit = (t: string) => t === 'Áram' ? 'kWh' : t === 'Üzemanyag' ? 'Ft' : 'm³';
   const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : '⛽';
   const getColor = (t: string) => t === 'Áram' ? '#fbbf24' : t === 'Víz' ? '#38bdf8' : t === 'Gáz' ? '#f87171' : '#a855f7';
@@ -176,39 +200,26 @@ function App() {
           </section>
         ) : (
           <>
-            {/* MEGOSZTÁS SZEKCIÓ */}
-<section className="card share-card">
-  <div className="view-selector">
-    <label>Kinek az adatait látod?</label>
-    <select value={viewingUserId || ''} onChange={(e) => handleUserChange(e.target.value)}>
-      <option value={user.sub}>Saját adataim</option>
-      {sharedWithMe.map((s: any) => (
-        <option key={s.owner_id} value={s.owner_id}>🏠 {s.owner_email}</option>
-      ))}
-    </select>
-  </div>
+            <section className="card share-card">
+              <div className="view-selector">
+                <label>Kinek az adatait látod?</label>
+                <select value={viewingUserId || ''} onChange={(e) => handleUserChange(e.target.value)}>
+                  <option value={user.sub}>Saját adataim</option>
+                  {sharedWithMe.map((s: any) => (
+                    <option key={s.owner_id} value={s.owner_id}>🏠 {s.owner_email}</option>
+                  ))}
+                </select>
+              </div>
+              {viewingUserId === user.sub && (
+                <div className="share-input-group">
+                  <input type="email" placeholder="Email megosztáshoz..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
+                  <button className="btn-share" onClick={handleShare}>Megosztás</button>
+                </div>
+              )}
+            </section>
 
-  {/* CSAK AKKOR LÁTSZIK, HA SAJÁT MAGUNKNÁL VAGYUNK */}
-  {viewingUserId === user.sub && (
-    <>
-      <hr style={{ border: '0', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '15px 0' }} />
-      <div className="share-input-group">
-        <input 
-          type="email" 
-          placeholder="Email a megosztáshoz..." 
-          value={shareEmail} 
-          onChange={(e) => setShareEmail(e.target.value)} 
-        />
-        <button className="btn-share" onClick={handleShare}>Megosztás</button>
-      </div>
-    </>
-  )}
-</section>
-
-            {/* ADATBEVITEL (Csak ha a sajátunkat nézzük) */}
             {viewingUserId === user.sub && (
               <section className="card main-card">
-                <h2>Új mérés</h2>
                 <div className="input-row">
                   <div className="input-field">
                     <select value={type} onChange={(e) => setType(e.target.value)}>
@@ -236,28 +247,34 @@ function App() {
               <div className="view-toggle">
                 <button className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>Napi</button>
                 <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
+                <button className={viewMode === 'annual' ? 'active' : ''} onClick={() => setViewMode('annual')}>Éves</button>
               </div>
             </div>
 
             <section className="card chart-card">
+              <h2>{filter} - {viewMode === 'daily' ? 'Állás' : viewMode === 'monthly' ? 'Havi' : 'Éves'} összesítő</h2>
               <div style={{ width: '100%', height: 300 }}>
                 <ResponsiveContainer>
                   {viewMode === 'daily' ? (
-                    <LineChart data={dailyData}>
+                    <LineChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                       <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
                       <YAxis stroke="#94a3b8" fontSize={10} />
                       <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
-                      <Line type="monotone" dataKey="ertek" stroke={getColor(filter)} strokeWidth={3} dot={{r: 4}} />
+                      <Line type="monotone" dataKey="ertek" stroke={getColor(filter)} strokeWidth={3} dot={{r: 4, fill: getColor(filter)}} />
                     </LineChart>
                   ) : (
-                    <BarChart data={monthlyData}>
+                    <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="honap" stroke="#94a3b8" fontSize={10} />
+                      <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
                       <YAxis stroke="#94a3b8" fontSize={10} />
-                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} itemStyle={{color: '#fff'}} />
-                      <Bar dataKey="fogyasztas" radius={[4, 4, 0, 0]}>
-                        {monthlyData.map((e, i) => <Cell key={i} fill={getColor(filter)} />)}
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+                        itemStyle={{ color: '#f8fafc' }}
+                        formatter={(v: any) => [`${v.toLocaleString()} ${getUnit(filter)}`, 'Összesen']}
+                      />
+                      <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>
+                        {chartData.map((e, i) => <Cell key={i} fill={getColor(filter)} />)}
                       </Bar>
                     </BarChart>
                   )}
@@ -274,9 +291,6 @@ function App() {
                     </div>
                     <div className="record-value-container">
                       <span className="record-value">{parseFloat(rec.Value).toLocaleString()} {getUnit(rec.Type)}</span>
-                      {viewingUserId === user.sub && (
-                        <button className="btn-delete" onClick={() => alert("Törlés funkció...")}>❌</button>
-                      )}
                     </div>
                   </div>
                 ))}
