@@ -127,7 +127,102 @@ function App() {
       });
     }
   };
+function App() {
+  // ... meglévő állapotok ...
+  const [shareEmail, setShareEmail] = useState('');
+  const [sharedWithMe, setSharedWithMe] = useState([]); // Kik osztották meg velem
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null); // Épp kinek az adatait látjuk
 
+  // Módosított fetchRecords: elfogad egy opcionális userId-t
+  const fetchRecords = async (token: string, targetId?: string) => {
+    const idToFetch = targetId || viewingUserId || user.sub;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/records?userId=${idToFetch}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setRecords(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  // Kik osztották meg velem lekérése
+  const fetchShares = async (token: string) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/shares/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setSharedWithMe(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  // Megosztás elküldése
+  const handleShare = async () => {
+    if (!shareEmail) return;
+    try {
+      await fetch(`${BACKEND_URL}/api/shares`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}` 
+        },
+        body: JSON.stringify({ sharedWithEmail: shareEmail })
+      });
+      alert(`Sikeresen megosztva: ${shareEmail}`);
+      setShareEmail('');
+    } catch (err) { alert("Hiba a megosztás során"); }
+  };
+
+  // Amikor a választóban embert váltunk
+  const handleUserChange = (id: string) => {
+    setViewingUserId(id);
+    fetchRecords(user.token, id);
+  };
+
+  // ... (Login success után hívd meg a fetchShares(token)-t is!) ...
+
+  return (
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <div className="app-wrapper">
+        {/* ... Header ... */}
+
+        {user && (
+          <>
+            {/* ÚJ: Felhasználó választó és Megosztás szekció */}
+            <section className="card share-card">
+              <div className="view-selector">
+                <label>Adatok megtekintése:</label>
+                <select onChange={(e) => handleUserChange(e.target.value)}>
+                  <option value={user.sub}>Saját adataim</option>
+                  {sharedWithMe.map((s: any) => (
+                    <option key={s.owner_id} value={s.owner_id}>Megosztva: {s.owner_email}</option>
+                  ))}
+                </select>
+              </div>
+              <hr />
+              <div className="share-input">
+                <input 
+                  type="email" 
+                  placeholder="Email cím a megosztáshoz..." 
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                />
+                <button onClick={handleShare}>Megosztás</button>
+              </div>
+            </section>
+
+            {/* A többi kód változatlan, de ha nem a saját adatunkat nézzük, tiltsuk le a rögzítést/törlést */}
+            {viewingUserId === user.sub && (
+               <section className="card main-card">
+                 {/* Új adat rögzítése csak saját magunknak */}
+               </section>
+            )}
+            
+            {/* Grafikon és lista (ezek automatikusan a szűrt rekordokat mutatják) */}
+          </>
+        )}
+      </div>
+    </GoogleOAuthProvider>
+  );
+}
   const monthlyData = getMonthlyConsumption();
   const getUnit = (t: string) => t === 'Áram' ? 'kWh' : t === 'Üzemanyag' ? 'Ft' : 'm³';
   const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : '⛽';
