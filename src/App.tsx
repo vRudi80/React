@@ -13,15 +13,19 @@ const GOOGLE_CLIENT_ID = "197361744572-ih728hq5jft3fqfd1esvktvrd8i97kcp.apps.goo
 function App() {
   const [user, setUser] = useState<any>(null);
   const [records, setRecords] = useState([]);
+  const [invoices, setInvoices] = useState([]);
   const [sharedWithMe, setSharedWithMe] = useState([]);
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
-  const [shareEmail, setShareEmail] = useState('');
   
   const [type, setType] = useState('Áram');
   const [value, setValue] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [filter, setFilter] = useState('Áram');
   const [viewMode, setViewMode] = useState('daily');
+  
+  const [shareEmail, setShareEmail] = useState('');
+  const [invoiceAmount, setInvoiceAmount] = useState('');
+  const [invoiceMonth, setInvoiceMonth] = useState(new Date().toISOString().substring(0, 7));
 
   const fetchRecords = async (token: string, targetId?: string) => {
     const idToFetch = targetId || viewingUserId || user?.sub;
@@ -31,6 +35,17 @@ function App() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) setRecords(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchInvoices = async (token: string, targetId?: string) => {
+    const idToFetch = targetId || viewingUserId || user?.sub;
+    if (!idToFetch) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/invoices?userId=${idToFetch}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setInvoices(await res.json());
     } catch (err) { console.error(err); }
   };
 
@@ -51,6 +66,7 @@ function App() {
         setUser({ ...decoded, token: savedToken });
         setViewingUserId(decoded.sub);
         fetchRecords(savedToken, decoded.sub);
+        fetchInvoices(savedToken, decoded.sub);
         fetchShares(savedToken);
       } catch (e) { localStorage.removeItem('userToken'); }
     }
@@ -63,6 +79,7 @@ function App() {
     setViewingUserId(decoded.sub);
     localStorage.setItem('userToken', token);
     fetchRecords(token, decoded.sub);
+    fetchInvoices(token, decoded.sub);
     fetchShares(token);
   };
 
@@ -70,7 +87,36 @@ function App() {
     googleLogout();
     setUser(null);
     setRecords([]);
+    setInvoices([]);
     localStorage.removeItem('userToken');
+  };
+
+  const handleSave = async () => {
+    if (!value || !date || !user) return alert("Minden mezőt tölts ki!");
+    try {
+      await fetch(`${BACKEND_URL}/api/records`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+        body: JSON.stringify({ type, value: parseFloat(value), date })
+      });
+      setValue('');
+      fetchRecords(user.token);
+    } catch (err) { alert("Hiba"); }
+  };
+
+  const handleInvoiceSave = async () => {
+    if (!invoiceAmount || !invoiceMonth || !user) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/invoices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+        body: JSON.stringify({ type: filter, amount: parseFloat(invoiceAmount), month: invoiceMonth })
+      });
+      if (res.ok) {
+        setInvoiceAmount('');
+        fetchInvoices(user.token);
+      }
+    } catch (err) { alert("Hiba"); }
   };
 
   const handleShare = async () => {
@@ -88,19 +134,7 @@ function App() {
   const handleUserChange = (newId: string) => {
     setViewingUserId(newId);
     fetchRecords(user.token, newId);
-  };
-
-  const handleSave = async () => {
-    if (!value || !date || !user) return alert("Minden mezőt tölts ki!");
-    try {
-      await fetch(`${BACKEND_URL}/api/records`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-        body: JSON.stringify({ type, value: parseFloat(value), date })
-      });
-      setValue('');
-      fetchRecords(user.token);
-    } catch (err) { alert("Hiba"); }
+    fetchInvoices(user.token, newId);
   };
 
   const handleDelete = async (id: number) => {
@@ -114,12 +148,11 @@ function App() {
     } catch (err) { alert("Hiba"); }
   };
 
+  // ADATFELDOLGOZÁS
   const currentTypeRecords = records.filter((r: any) => r.Type === filter)
     .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
 
-  const dailyData = currentTypeRecords.map((r: any) => ({ label: r.FormattedDate.split(' ')[0], ertek: parseFloat(r.Value) }));
-
-  const getMonthlyConsumption = () => {
+  const getMonthlyData = () => {
     const monthlySum: { [key: string]: number } = {};
     if (filter === 'Üzemanyag') {
       currentTypeRecords.forEach((r: any) => {
@@ -136,10 +169,13 @@ function App() {
         }
       }
     }
-    return Object.keys(monthlySum).sort().map(m => ({ label: m, ertek: Math.round(monthlySum[m] * 100) / 100 }));
+    return Object.keys(monthlySum).sort().map(m => {
+      const inv = invoices.find((f: any) => f.Month === m && f.Type === filter);
+      return { label: m, ertek: Math.round(monthlySum[m] * 100) / 100, szamla: inv ? inv.Amount : 0 };
+    });
   };
 
-  const getAnnualConsumption = () => {
+  const getAnnualData = () => {
     const annualSum: { [key: string]: number } = {};
     if (filter === 'Üzemanyag') {
       currentTypeRecords.forEach((r: any) => {
@@ -159,7 +195,10 @@ function App() {
     return Object.keys(annualSum).sort().map(y => ({ label: y, ertek: Math.round(annualSum[y] * 100) / 100 }));
   };
 
-  const chartData = viewMode === 'daily' ? dailyData : viewMode === 'monthly' ? getMonthlyConsumption() : getAnnualConsumption();
+  const chartData = viewMode === 'daily' 
+    ? currentTypeRecords.map((r: any) => ({ label: r.FormattedDate.split(' ')[0], ertek: parseFloat(r.Value) }))
+    : viewMode === 'monthly' ? getMonthlyData() : getAnnualData();
+
   const getUnit = (t: string) => t === 'Áram' ? 'kWh' : t === 'Üzemanyag' ? 'Ft' : 'm³';
   const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : '⛽';
   const getColor = (t: string) => t === 'Áram' ? '#fbbf24' : t === 'Víz' ? '#38bdf8' : t === 'Gáz' ? '#f87171' : '#a855f7';
@@ -180,7 +219,7 @@ function App() {
         {!user ? (
           <section className="card login-card">
             <h2>Üdvözöljük a Rezsiappban!</h2>
-            <p className="login-desc">Az alkalmazás használatához biztonságos Google-bejelentkezés szükséges. Adataidat a saját fiókodhoz kötve tároljuk.</p>
+            <p className="login-desc">Biztonságos Google-bejelentkezés szükséges az adatok tárolásához.</p>
             <div className="google-btn-container">
               <GoogleLogin onSuccess={handleLoginSuccess} onError={() => alert('Hiba')} />
             </div>
@@ -206,90 +245,8 @@ function App() {
               </section>
             </div>
 
-            {viewingUserId === user.sub && (
+            {viewingUserId === user.sub && viewMode !== 'monthly' && (
               <section className="card main-card">
                 <div className="input-row">
                   <div className="input-field">
                     <select value={type} onChange={(e) => setType(e.target.value)}>
-                      <option value="Áram">⚡ Áram</option>
-                      <option value="Víz">💧 Víz</option>
-                      <option value="Gáz">🔥 Gáz</option>
-                      <option value="Üzemanyag">⛽ Üzemanyag</option>
-                    </select>
-                  </div>
-                  <div className="input-field"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
-                  <div className="input-field"><input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" /></div>
-                </div>
-                <button className="btn-primary" onClick={handleSave}>Mentés</button>
-              </section>
-            )}
-
-            <div className="controls-bar">
-              <div className="filter-buttons">
-                {['Áram', 'Víz', 'Gáz', 'Üzemanyag'].map(f => (
-                  <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>
-                      {getIcon(f)} {f}
-                  </button>
-                ))}
-              </div>
-              <div className="view-toggle">
-                <button className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>Napi</button>
-                <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
-                <button className={viewMode === 'annual' ? 'active' : ''} onClick={() => setViewMode('annual')}>Éves</button>
-              </div>
-            </div>
-
-            <section className="card chart-card">
-              <div style={{ width: '100%', height: 300 }}>
-                <ResponsiveContainer>
-                  {viewMode === 'daily' ? (
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
-                      <YAxis stroke="#94a3b8" fontSize={10} />
-                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
-                      <Line type="monotone" dataKey="ertek" stroke={getColor(filter)} strokeWidth={3} dot={{r: 4, fill: getColor(filter)}} />
-                    </LineChart>
-                  ) : (
-                    <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
-                      <YAxis stroke="#94a3b8" fontSize={10} />
-                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} formatter={(v: any) => [`${v.toLocaleString()} ${getUnit(filter)}`, 'Összesen']} />
-                      <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>
-                        {chartData.map((e, i) => <Cell key={i} fill={getColor(filter)} />)}
-                      </Bar>
-                    </BarChart>
-                  )}
-                </ResponsiveContainer>
-              </div>
-            </section>
-
-            <section className="list-section">
-              <h3 className="section-title">Rögzített adatok</h3>
-              <div className="list-container">
-                <div className="records-grid">
-                  {currentTypeRecords.slice().reverse().map((rec: any) => (
-                    <div key={rec.Id} className={`record-item ${rec.Type}`}>
-                      <div className="record-info">
-                        <span>{getIcon(rec.Type)} {rec.Type} - {rec.FormattedDate}</span>
-                      </div>
-                      <div className="record-value-container">
-                        <span className="record-value">{parseFloat(rec.Value).toLocaleString()} {getUnit(rec.Type)}</span>
-                        {viewingUserId === user.sub && (
-                          <button className="btn-delete" onClick={() => handleDelete(rec.Id)}>❌</button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-          </>
-        )}
-      </div>
-    </GoogleOAuthProvider>
-  );
-}
-
-export default App;
