@@ -26,7 +26,6 @@ body {
   margin: 0 auto;
 }
 
-/* --- FEJLÉC (Logo balra, Profil jobbra) --- */
 .main-header {
   width: 100%;
   display: flex;
@@ -69,7 +68,6 @@ body {
   cursor: pointer;
   font-size: 0.75rem;
   font-weight: 600;
-  transition: all 0.2s;
 }
 
 .btn-logout:hover {
@@ -77,30 +75,7 @@ body {
   color: white;
 }
 
-/* --- BEJELENTKEZÉS (Teljesen középre) --- */
-.login-card {
-  text-align: center;
-  padding: 4rem 2rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.login-desc {
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  max-width: 350px;
-  margin: 1.5rem 0;
-  line-height: 1.6;
-}
-
-.google-btn-container {
-  display: flex;
-  justify-content: center;
-  margin-top: 1rem;
-}
-
-/* --- MEGOSZTÁS (Kompakt, balra fent) --- */
+/* --- MEGOSZTÁS --- */
 .top-row {
   width: 100%;
   display: flex;
@@ -111,9 +86,7 @@ body {
 .share-card.compact {
   max-width: 320px;
   padding: 12px 16px;
-  margin-bottom: 0;
   background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .share-input-group {
@@ -141,7 +114,7 @@ body {
   font-weight: bold;
 }
 
-/* --- ÁLTALÁNOS KÁRTYÁK --- */
+/* --- KÁRTYÁK ÉS INPUTOK --- */
 .card {
   background: var(--bg-card);
   width: 100%;
@@ -177,7 +150,69 @@ select, input, .btn-primary {
   cursor: pointer;
 }
 
-/* --- GRAFIKON ÉS VEZÉRLŐK --- */
+/* --- GÖRGETHETŐ LISTA --- */
+.section-title {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 15px;
+  padding-left: 5px;
+}
+
+.list-container {
+  max-height: 400px; /* Itt állítod be, milyen magas legyen a lista */
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+/* Egyedi görgetősáv design */
+.list-container::-webkit-scrollbar {
+  width: 6px;
+}
+.list-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+.list-container::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 10px;
+}
+.list-container::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+.record-item {
+  background: var(--bg-card);
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  border-left: 5px solid var(--primary);
+}
+
+.record-item.Áram { border-left-color: #fbbf24; }
+.record-item.Víz { border-left-color: #38bdf8; }
+.record-item.Gáz { border-left-color: #f87171; }
+.record-item.Üzemanyag { border-left-color: #a855f7; }
+
+.record-value {
+  font-weight: 800;
+  color: var(--primary);
+  font-size: 1.2rem;
+}
+
+.btn-delete {
+  background: transparent;
+  border: none;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+/* --- EGYÉB --- */
 .controls-bar {
   display: flex;
   flex-direction: column;
@@ -228,35 +263,9 @@ select, input, .btn-primary {
   color: white;
 }
 
-/* --- LISTA --- */
-.record-item {
-  background: var(--bg-card);
-  padding: 1rem 1.5rem;
-  border-radius: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-  border-left: 5px solid var(--primary);
-}
-
-.record-item.Áram { border-left-color: #fbbf24; }
-.record-item.Víz { border-left-color: #38bdf8; }
-.record-item.Gáz { border-left-color: #f87171; }
-.record-item.Üzemanyag { border-left-color: #a855f7; }
-
-.record-value {
-  font-weight: 800;
-  color: var(--primary);
-  font-size: 1.2rem;
-}
-
-.btn-delete {
-  background: transparent;
-  border: none;
-  color: #f87171;
-  cursor: pointer;
-  font-size: 1.2rem;
+.login-card {
+  text-align: center;
+  padding: 4rem 2rem;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator {
