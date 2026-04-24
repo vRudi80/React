@@ -293,6 +293,105 @@ select, input, .btn-primary {
 .btn-share:hover {
   background: #059669;
 }
+/* --- FEJLÉC ÉS KILÉPÉS --- */
+.main-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  margin-bottom: 2rem;
+}
+
+.logo {
+  margin: 0;
+  font-size: 1.8rem;
+  background: linear-gradient(to right, #3b82f6, #60a5fa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-info img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+/* --- BEJELENTKEZÉS KÖZÉPRE --- */
+.login-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 3rem 2rem;
+}
+
+.login-desc {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  max-width: 300px;
+  margin-bottom: 2rem;
+  line-height: 1.5;
+}
+
+.google-btn-container {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+/* --- KOMPAKT MEGOSZTÁS (FENT BALRA) --- */
+.top-row {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 1rem;
+}
+
+.share-card.compact {
+  max-width: 300px; /* Kisebb méret */
+  padding: 12px;
+  margin-bottom: 0;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.share-input-group {
+  display: flex;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.share-input-group input {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+}
+
+.btn-share {
+  padding: 0 12px;
+  font-size: 1.2rem;
+}
+
+.view-selector select {
+  padding: 6px;
+  font-size: 0.85rem;
+}
+
+/* Mobil optimalizálás: mobilon maradjon középen a megosztás */
+@media (max-width: 600px) {
+  .top-row {
+    justify-content: center;
+  }
+  .share-card.compact {
+    max-width: 100%;
+  }
+}
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
 }
