@@ -4,6 +4,7 @@
   --primary: #3b82f6;
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
+  --money: #10b981;
 }
 
 body {
@@ -20,8 +21,8 @@ body {
   margin: 0 auto;
 }
 
+/* FEJLÉC */
 .main-header {
-  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -60,69 +61,70 @@ body {
   font-weight: 600;
 }
 
-/* --- MEGOSZTÁS ÉS SZÁMLA KÁRTYA --- */
-.top-row { width: 100%; display: flex; justify-content: flex-start; margin-bottom: 1.5rem; }
+/* MEGOSZTÁS ÉS SZÁMLA */
+.top-row { width: 100%; display: flex; justify-content: flex-start; margin-bottom: 1rem; }
 .share-card.compact { max-width: 320px; padding: 12px 16px; background: rgba(30, 41, 59, 0.8); }
 
 .invoice-card {
-  background: rgba(59, 130, 246, 0.05) !important;
-  border: 1px dashed rgba(59, 130, 246, 0.3);
+  background: rgba(16, 185, 129, 0.05) !important;
+  border: 1px dashed var(--money) !important;
 }
-.invoice-card h3 { font-size: 0.85rem; color: var(--primary); margin-bottom: 10px; margin-top: 0; }
+.invoice-card h3 { font-size: 0.85rem; color: var(--money); margin-bottom: 10px; margin-top: 0; }
 
 .share-input-group { display: flex; gap: 8px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 10px; }
-.share-input-group input { padding: 6px 10px; font-size: 0.8rem; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 8px; }
+.share-input-group input { padding: 6px 10px; font-size: 0.8rem; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 8px; flex: 1; }
 
 .btn-share {
-  background: #10b981;
+  background: var(--money);
   color: white;
   border: none;
-  min-width: 35px; /* Minimum szélesség a + jelnek */
+  min-width: 32px;
   height: 32px;
-  padding: 0 15px; /* Oldalsó távolság a szövegnek */
+  padding: 0 12px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: bold;
   display: flex;
   align-items: center;
   justify-content: center;
-  white-space: nowrap; /* Ne törje ketté a szöveget */
-  transition: background 0.2s;
+  white-space: nowrap;
 }
 
-.btn-share:hover {
-  background: #059669;
-}
-
-/* --- KÁRTYÁK --- */
+/* KÁRTYÁK */
 .card { background: var(--bg-card); width: 100%; padding: 1.5rem; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); margin-bottom: 1.5rem; box-sizing: border-box; }
 .input-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px; }
-select, input, .btn-primary { width: 100%; box-sizing: border-box; padding: 12px; border-radius: 10px; border: 1px solid #334155; background: #334155; color: white; font-size: 1rem; }
+select, input, .btn-primary { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #334155; background: #334155; color: white; font-size: 1rem; }
 .btn-primary { background: var(--primary); border: none; font-weight: bold; cursor: pointer; }
 
-/* --- GÖRGETHETŐ LISTA --- */
-.section-title { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; padding-left: 5px; }
-.list-container { max-height: 400px; overflow-y: auto; padding-right: 8px; }
-.list-container::-webkit-scrollbar { width: 5px; }
+/* VEZÉRLŐK */
+.controls-bar { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-bottom: 2rem; }
+.filter-buttons { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.filter-buttons button { background: #1e293b; border: 1px solid #334155; color: white; padding: 8px 16px; border-radius: 30px; cursor: pointer; }
+.filter-buttons button.active { background: var(--primary); border-color: var(--primary); }
+
+.mode-toggle { display: flex; background: rgba(16, 185, 129, 0.1); padding: 4px; border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.2); }
+.mode-toggle button { background: transparent; border: none; color: var(--text-muted); padding: 6px 15px; border-radius: 8px; cursor: pointer; font-size: 0.8rem; }
+.mode-toggle button.active { background: var(--money); color: white; }
+
+.view-toggle { display: flex; background: #1e293b; padding: 4px; border-radius: 12px; }
+.view-toggle button { background: transparent; border: none; color: var(--text-muted); padding: 6px 15px; border-radius: 8px; cursor: pointer; }
+.view-toggle button.active { background: #334155; color: white; }
+
+/* LISTA */
+.section-title { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 10px; padding-left: 5px; }
+.list-container { max-height: 350px; overflow-y: auto; padding-right: 5px; }
+.list-container::-webkit-scrollbar { width: 4px; }
 .list-container::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
 
-.record-item { background: var(--bg-card); padding: 1rem 1.5rem; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-left: 5px solid var(--primary); }
+.record-item { background: var(--bg-card); padding: 0.8rem 1.2rem; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-left: 4px solid var(--primary); }
 .record-item.Áram { border-left-color: #fbbf24; }
 .record-item.Víz { border-left-color: #38bdf8; }
 .record-item.Gáz { border-left-color: #f87171; }
 .record-item.Üzemanyag { border-left-color: #a855f7; }
 
-.record-value { font-weight: 800; color: var(--primary); font-size: 1.1rem; }
-.btn-delete { background: transparent; border: none; color: #f87171; cursor: pointer; font-size: 1.1rem; }
+.record-value { font-weight: 700; color: var(--primary); font-size: 1.1rem; }
+.btn-delete { background: transparent; border: none; color: #f87171; cursor: pointer; }
 
-/* --- VEZÉRLŐK --- */
-.controls-bar { display: flex; flex-direction: column; align-items: center; gap: 20px; margin-bottom: 2rem; }
-.filter-buttons { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-.filter-buttons button { background: #1e293b; border: 1px solid #334155; color: white; padding: 8px 18px; border-radius: 30px; cursor: pointer; }
-.filter-buttons button.active { background: var(--primary); border-color: var(--primary); }
-.view-toggle { display: flex; background: #1e293b; padding: 4px; border-radius: 12px; }
-.view-toggle button { background: transparent; border: none; color: var(--text-muted); padding: 6px 15px; border-radius: 8px; cursor: pointer; }
-.view-toggle button.active { background: #334155; color: white; }
-
+.login-card { text-align: center; padding: 3rem; }
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(1); }
