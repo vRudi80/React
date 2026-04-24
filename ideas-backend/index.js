@@ -34,7 +34,25 @@ app.get('/api/invoices', verifyUser, async (req, res) => {
     res.status(500).json({ error: 'Hiba a számlák lekérésekor' });
   }
 });
-
+// Számla törlése
+app.delete('/api/invoices/:id', verifyUser, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [result] = await pool.query(
+      'DELETE FROM invoices WHERE Id = ? AND UserId = ?',
+      [id, req.userId]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Számla nem található vagy nincs jogosultság a törléshez' });
+    }
+    
+    res.json({ success: true, message: 'Számla sikeresen törölve' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Hiba történt a törlés során' });
+  }
+});
 // 2. Számla mentése vagy frissítése
 app.post('/api/invoices', verifyUser, async (req, res) => {
   const { type, amount, month } = req.body;
