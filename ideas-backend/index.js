@@ -19,6 +19,38 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
 });
 
+// --- SZÁMLÁK KEZELÉSE ---
+
+// 1. Számlák lekérése
+app.get('/api/invoices', verifyUser, async (req, res) => {
+  const targetUserId = req.query.userId || req.userId;
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM invoices WHERE UserId = ? ORDER BY Month DESC',
+      [targetUserId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Hiba a számlák lekérésekor' });
+  }
+});
+
+// 2. Számla mentése vagy frissítése
+app.post('/api/invoices', verifyUser, async (req, res) => {
+  const { type, amount, month } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO invoices (Type, Amount, Month, UserId) 
+       VALUES (?, ?, ?, ?) 
+       ON DUPLICATE KEY UPDATE Amount = VALUES(Amount)`,
+      [type, amount, month, req.userId]
+    );
+    res.status(201).json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Hiba a számla mentésekor' });
+  }
+});
+
 // TOKEN ELLENŐRZÉS + EMAIL CÍM KINYERÉSE
 async function verifyUser(req, res, next) {
   const authHeader = req.headers.authorization;
