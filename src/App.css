@@ -61,6 +61,47 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .no-data-msg { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-style: italic; font-size: 0.9rem; }
 input[type="date"]::-webkit-calendar-picker-indicator, input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(1); }
 
+/* A beviteli mező és a gomb konténere */
+.share-input-group {
+  display: flex;
+  gap: 8px; /* Távolság az input és a gomb között */
+  margin-top: 10px;
+  align-items: center;
+}
+
+/* A plusz gomb egyedi stílusa */
+.btn-share {
+  background-color: #10b981; /* A te zöld színed */
+  color: white;
+  border: none;
+  width: 38px; /* Legyen négyzet alakú */
+  height: 38px;
+  border-radius: 8px;
+  font-size: 1.4rem;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0; /* Ne nyomódjon össze a gomb */
+}
+
+.btn-share:hover {
+  background-color: #059669;
+  transform: scale(1.05);
+}
+
+.btn-share:active {
+  transform: scale(0.95);
+}
+
+/* Az email input pici finomítása, hogy jobban illeszkedjen */
+.share-input-group input {
+  flex: 1;
+  margin-bottom: 0 !important; /* Kivesszük az alsó margót, ha volt */
+  height: 38px;
+} 
 @media (max-width: 600px) {
   .input-row { grid-template-columns: 1fr; }
   .filter-buttons button { padding: 6px 10px; font-size: 0.75rem; }
