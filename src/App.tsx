@@ -27,9 +27,10 @@ function App() {
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('usage'); 
 
+  // LEKÉRÉS JAVÍTVA
   const fetchAll = async (token: string, targetId?: string) => {
     const id = targetId || viewingUserId || user?.sub;
-    if (!id) return;
+    if (!id || !token) return;
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
       const [recRes, invRes, shareRes] = await Promise.all([
@@ -37,10 +38,17 @@ function App() {
         fetch(`${BACKEND_URL}/api/invoices?userId=${id}`, { headers }),
         fetch(`${BACKEND_URL}/api/shares/me`, { headers })
       ]);
-      if (recRes.ok) setRecords(await recRes.json());
-      if (invRes.ok) setInvoices(await invRes.json());
-      if (shareRes.ok) setSharedWithMe(await shareRes.json());
-    } catch (err) { console.error("Hiba az adatok lekérésekor"); }
+      
+      const recData = recRes.ok ? await recRes.json() : [];
+      const invData = invRes.ok ? await invRes.json() : [];
+      const shrData = shareRes.ok ? await shareRes.json() : [];
+
+      setRecords(Array.isArray(recData) ? recData : []);
+      setInvoices(Array.isArray(invData) ? invData : []);
+      setSharedWithMe(Array.isArray(shrData) ? shrData : []);
+    } catch (err) {
+      console.error("Adatlekérési hiba:", err);
+    }
   };
 
   useEffect(() => {
@@ -76,64 +84,62 @@ function App() {
     if (!user || !value) return alert("Adj meg egy értéket!");
     try {
       const isInvoice = recordMode === 'invoice' || type === 'Üzemanyag';
-      if (isInvoice) {
-        await fetch(`${BACKEND_URL}/api/invoices`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-          body: JSON.stringify({ type, amount: parseFloat(value), month: invoiceMonth })
-        });
+      const endpoint = isInvoice ? '/api/invoices' : '/api/records';
+      const body = isInvoice 
+        ? { type, amount: parseFloat(value), month: invoiceMonth }
+        : { type, value: parseFloat(value), date };
+
+      const res = await fetch(`${BACKEND_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+        body: JSON.stringify(body)
+      });
+      
+      if (res.ok) {
+        setValue('');
+        fetchAll(user.token);
       } else {
-        await fetch(`${BACKEND_URL}/api/records`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-          body: JSON.stringify({ type, value: parseFloat(value), date })
-        });
+        alert("Hiba történt a mentéskor!");
       }
-      setValue('');
-      fetchAll(user.token);
-    } catch (err) { alert("Szerver hiba mentéskor"); }
+    } catch (err) { alert("Szerver hiba"); }
   };
 
-  const handleDeleteRecord = async (id: number) => {
-    if (!window.confirm("Törlöd ezt a mérőóra állást?") || !user) return;
-    await fetch(`${BACKEND_URL}/api/records/${id}`, { 
-      method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } 
+  const handleDelete = async (id: number, listType: string) => {
+    if (!window.confirm("Biztosan törlöd?") || !user) return;
+    const endpoint = listType === 'meter' ? `/api/records/${id}` : `/api/invoices/${id}`;
+    // Megjegyzés: A számla törlés útvonalat még nem írtuk meg a backendben, így ez csak mérőóránál fog menni
+    if(listType === 'invoice') return alert("Számla törlés hamarosan...");
+
+    await fetch(`${BACKEND_URL}${endpoint}`, { 
+      method: 'DELETE', 
+      headers: { 'Authorization': `Bearer ${user.token}` } 
     });
     fetchAll(user.token);
   };
 
-  const handleUserChange = (newId: string) => {
-    setViewingUserId(newId);
-    fetchAll(user.token, newId);
-  };
-
-  // --- GRAFIKON ADATOK GENERÁLÁSA ---
+  // --- GRAFIKON ADATOK ---
   const getChartData = () => {
     if (displayMode === 'cost' && viewMode === 'daily') return [];
 
-    if (viewMode === 'daily' && displayMode === 'usage') {
-      const filtered = records.filter((r: any) => r.Type === filter)
-        .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
-      return filtered.map((r: any) => ({ label: r.FormattedDate.split(' ')[0], ertek: parseFloat(r.Value) }));
-    }
-
-    const dataMap: { [key: string]: { usage: number, cost: number } } = {};
     const keyLen = viewMode === 'monthly' ? 7 : 4;
+    const dataMap: { [key: string]: { usage: number, cost: number } } = {};
 
     if (displayMode === 'usage') {
-      const filtered = records.filter((r: any) => r.Type === filter)
+      const filteredRecords = records.filter((r: any) => r.Type === filter)
         .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
-      for (let i = 1; i < filtered.length; i++) {
-        const curV = parseFloat(filtered[i].Value);
-        const preV = parseFloat(filtered[i-1].Value);
+
+      for (let i = 1; i < filteredRecords.length; i++) {
+        const curV = parseFloat(filteredRecords[i].Value);
+        const preV = parseFloat(filteredRecords[i-1].Value);
         if (curV >= preV) {
-          const key = filtered[i].FormattedDate.substring(0, keyLen);
+          const key = filteredRecords[i].FormattedDate.substring(0, keyLen);
           if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
           dataMap[key].usage += (curV - preV);
         }
       }
     } else {
-      invoices.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
+      const filteredInvoices = invoices.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter);
+      filteredInvoices.forEach((inv: any) => {
         const key = inv.Month.substring(0, keyLen);
         if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
         dataMap[key].cost += parseFloat(inv.Amount);
@@ -147,7 +153,6 @@ function App() {
   };
 
   const finalData = getChartData();
-  const getUnit = () => displayMode === 'cost' ? 'Ft' : (filter === 'Áram' ? 'kWh' : 'm³');
   const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : t === 'Üzemanyag' ? '⛽' : '📊';
   const getColor = () => {
     if (displayMode === 'cost') return filter === 'Összes' ? '#6366f1' : '#10b981';
@@ -157,11 +162,11 @@ function App() {
     return '#a855f7';
   };
 
-  // LISTA KOMBINÁLÁSA (Mérőóra + Számlák)
+  // --- KOMBINÁLT LISTA ---
   const combinedList = [
-    ...records.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, listType: 'meter', sortDate: r.FormattedDate })),
-    ...invoices.filter((i: any) => i.Type === filter).map((i: any) => ({ ...i, listType: 'invoice', sortDate: i.Month, Value: i.Amount, FormattedDate: i.Month }))
-  ].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime());
+    ...records.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter' })),
+    ...invoices.filter((i: any) => i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, FormattedDate: i.Month }))
+  ].sort((a, b) => new Date(b.FormattedDate || b.Month).getTime() - new Date(a.FormattedDate || a.Month).getTime());
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -179,7 +184,7 @@ function App() {
         {!user ? (
           <section className="card login-card">
             <h2>Üdvözöljük!</h2>
-            <p className="login-desc">Jelentkezzen be az adatai kezeléséhez.</p>
+            <p className="login-desc">Jelentkezzen be a folytatáshoz.</p>
             <div className="google-btn-container"><GoogleLogin onSuccess={handleLoginSuccess} /></div>
           </section>
         ) : (
@@ -245,32 +250,32 @@ function App() {
             </div>
 
             <section className="card chart-card">
-              <div style={{ width: '100%', height: 300 }}>
-                {displayMode === 'cost' && viewMode === 'daily' ? (
-                  <div className="no-data-msg">Válassz Havi vagy Éves nézetet a költségekhez!</div>
-                ) : (
+              {finalData.length === 0 ? (
+                <div className="no-data-msg">Nincs megjeleníthető adat ebben a nézetben.</div>
+              ) : (
+                <div style={{ width: '100%', height: 300 }}>
                   <ResponsiveContainer>
                     {viewMode === 'daily' ? (
                       <LineChart data={finalData}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" fontSize={10} /><YAxis fontSize={10} /><Tooltip /><Line type="monotone" dataKey="ertek" stroke={getColor()} strokeWidth={3} dot={{fill: getColor()}} /></LineChart>
                     ) : (
-                      <BarChart data={finalData}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" fontSize={10} /><YAxis fontSize={10} /><Tooltip formatter={(v:any) => [`${v.toLocaleString()} ${getUnit()}`, displayMode==='usage'?'Fogyasztás':'Összeg']} /><Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{finalData.map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar></BarChart>
+                      <BarChart data={finalData}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" fontSize={10} /><YAxis fontSize={10} /><Tooltip /><Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{finalData.map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar></BarChart>
                     )}
                   </ResponsiveContainer>
-                )}
-              </div>
+                </div>
+              )}
             </section>
 
             <section className="list-section">
-              <h3 className="section-title">Rögzített adatok ({filter})</h3>
+              <h3 className="section-title">Adatok: {filter}</h3>
               <div className="list-container">
-                {combinedList.map((item: any, idx) => (
-                  <div key={idx} className={`record-item ${item.Type} ${item.listType}`}>
+                {combinedList.length === 0 ? <p className="no-data-msg">Nincs rögzített adat.</p> : combinedList.map((item: any, idx) => (
+                  <div key={idx} className={`record-item ${item.Type} ${item.lType}`}>
                     <div className="record-info">
-                      <span>{item.listType === 'meter' ? '📟 Állás' : '💰 Számla'} - {item.FormattedDate}</span>
+                      <span>{item.lType === 'meter' ? '📟 Állás' : '💰 Számla'} - {item.FormattedDate}</span>
                     </div>
                     <div className="record-value-container">
-                      <span className="record-value">{parseFloat(item.Value).toLocaleString()} {item.listType === 'meter' ? getUnit() : 'Ft'}</span>
-                      {viewingUserId === user.sub && item.listType === 'meter' && <button className="btn-delete" onClick={() => handleDeleteRecord(item.Id)}>❌</button>}
+                      <span className="record-value">{parseFloat(item.Value).toLocaleString()} {item.lType === 'meter' ? (filter==='Áram'?'kWh':'m³') : 'Ft'}</span>
+                      {viewingUserId === user.sub && item.lType === 'meter' && <button className="btn-delete" onClick={() => handleDelete(item.Id, 'meter')}>❌</button>}
                     </div>
                   </div>
                 ))}
