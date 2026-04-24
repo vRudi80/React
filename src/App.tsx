@@ -13,21 +13,35 @@ const GOOGLE_CLIENT_ID = "197361744572-ih728hq5jft3fqfd1esvktvrd8i97kcp.apps.goo
 function App() {
   const [user, setUser] = useState<any>(null);
   const [records, setRecords] = useState([]);
+  const [sharedWithMe, setSharedWithMe] = useState([]);
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  const [shareEmail, setShareEmail] = useState('');
+  
   const [type, setType] = useState('Áram');
   const [value, setValue] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [filter, setFilter] = useState('Áram');
   const [viewMode, setViewMode] = useState('daily');
 
-  const fetchRecords = async (token: string) => {
+  // Adatok lekérése (Saját vagy kiválasztott useré)
+  const fetchRecords = async (token: string, targetId?: string) => {
+    const idToFetch = targetId || viewingUserId || user?.sub;
+    if (!idToFetch) return;
     try {
-      const res = await fetch(`${BACKEND_URL}/api/records`, {
+      const res = await fetch(`${BACKEND_URL}/api/records?userId=${idToFetch}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.ok) {
-        const data = await res.json();
-        setRecords(data);
-      }
+      if (res.ok) setRecords(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  // Megosztások lekérése
+  const fetchShares = async (token: string) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/shares/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setSharedWithMe(await res.json());
     } catch (err) { console.error(err); }
   };
 
@@ -37,20 +51,21 @@ function App() {
       try {
         const decoded: any = jwtDecode(savedToken);
         setUser({ ...decoded, token: savedToken });
-        fetchRecords(savedToken);
-      } catch (e) {
-        localStorage.removeItem('userToken');
-      }
+        setViewingUserId(decoded.sub);
+        fetchRecords(savedToken, decoded.sub);
+        fetchShares(savedToken);
+      } catch (e) { localStorage.removeItem('userToken'); }
     }
   }, []);
 
   const handleLoginSuccess = (credentialResponse: any) => {
     const token = credentialResponse.credential;
     const decoded: any = jwtDecode(token);
-    const userData = { ...decoded, token: token };
-    setUser(userData);
+    setUser({ ...decoded, token: token });
+    setViewingUserId(decoded.sub);
     localStorage.setItem('userToken', token);
-    fetchRecords(token);
+    fetchRecords(token, decoded.sub);
+    fetchShares(token);
   };
 
   const handleLogout = () => {
@@ -60,41 +75,47 @@ function App() {
     localStorage.removeItem('userToken');
   };
 
-  const handleSave = async () => {
-    if (!value || !date || !user) return alert("Minden mezőt tölts ki!");
+  const handleShare = async () => {
+    if (!shareEmail || !user) return;
     try {
-      await fetch(`${BACKEND_URL}/api/records`, {
+      const res = await fetch(`${BACKEND_URL}/api/shares`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${user.token}` 
         },
+        body: JSON.stringify({ sharedWithEmail: shareEmail })
+      });
+      if (res.ok) {
+        alert("Sikeres megosztás!");
+        setShareEmail('');
+      }
+    } catch (err) { alert("Hiba a megosztáskor"); }
+  };
+
+  const handleUserChange = (newId: string) => {
+    setViewingUserId(newId);
+    fetchRecords(user.token, newId);
+  };
+
+  const handleSave = async () => {
+    if (!value || !date || !user) return alert("Mezők!");
+    try {
+      await fetch(`${BACKEND_URL}/api/records`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
         body: JSON.stringify({ type, value: parseFloat(value), date })
       });
       setValue('');
       fetchRecords(user.token);
-    } catch (err) { alert("Hiba a mentés során!"); }
+    } catch (err) { alert("Hiba"); }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm("Biztosan törlöd?") || !user) return;
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/records/${id}`, { 
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${user.token}` }
-      });
-      if (res.ok) fetchRecords(user.token);
-    } catch (err) { alert("Hiba a törlés során!"); }
-  };
-
-  const currentTypeRecords = records
-    .filter((r: any) => r.Type === filter)
+  // --- Adatfeldolgozás ---
+  const currentTypeRecords = records.filter((r: any) => r.Type === filter)
     .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
 
-  const dailyData = currentTypeRecords.map((r: any) => ({
-    label: r.FormattedDate.split(' ')[0],
-    ertek: parseFloat(r.Value)
-  }));
+  const dailyData = currentTypeRecords.map((r: any) => ({ label: r.FormattedDate.split(' ')[0], ertek: parseFloat(r.Value) }));
 
   const getMonthlyConsumption = () => {
     if (filter === 'Üzemanyag') {
@@ -127,102 +148,7 @@ function App() {
       });
     }
   };
-function App() {
-  // ... meglévő állapotok ...
-  const [shareEmail, setShareEmail] = useState('');
-  const [sharedWithMe, setSharedWithMe] = useState([]); // Kik osztották meg velem
-  const [viewingUserId, setViewingUserId] = useState<string | null>(null); // Épp kinek az adatait látjuk
 
-  // Módosított fetchRecords: elfogad egy opcionális userId-t
-  const fetchRecords = async (token: string, targetId?: string) => {
-    const idToFetch = targetId || viewingUserId || user.sub;
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/records?userId=${idToFetch}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) setRecords(await res.json());
-    } catch (err) { console.error(err); }
-  };
-
-  // Kik osztották meg velem lekérése
-  const fetchShares = async (token: string) => {
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/shares/me`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) setSharedWithMe(await res.json());
-    } catch (err) { console.error(err); }
-  };
-
-  // Megosztás elküldése
-  const handleShare = async () => {
-    if (!shareEmail) return;
-    try {
-      await fetch(`${BACKEND_URL}/api/shares`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.token}` 
-        },
-        body: JSON.stringify({ sharedWithEmail: shareEmail })
-      });
-      alert(`Sikeresen megosztva: ${shareEmail}`);
-      setShareEmail('');
-    } catch (err) { alert("Hiba a megosztás során"); }
-  };
-
-  // Amikor a választóban embert váltunk
-  const handleUserChange = (id: string) => {
-    setViewingUserId(id);
-    fetchRecords(user.token, id);
-  };
-
-  // ... (Login success után hívd meg a fetchShares(token)-t is!) ...
-
-  return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <div className="app-wrapper">
-        {/* ... Header ... */}
-
-        {user && (
-          <>
-            {/* ÚJ: Felhasználó választó és Megosztás szekció */}
-            <section className="card share-card">
-              <div className="view-selector">
-                <label>Adatok megtekintése:</label>
-                <select onChange={(e) => handleUserChange(e.target.value)}>
-                  <option value={user.sub}>Saját adataim</option>
-                  {sharedWithMe.map((s: any) => (
-                    <option key={s.owner_id} value={s.owner_id}>Megosztva: {s.owner_email}</option>
-                  ))}
-                </select>
-              </div>
-              <hr />
-              <div className="share-input">
-                <input 
-                  type="email" 
-                  placeholder="Email cím a megosztáshoz..." 
-                  value={shareEmail}
-                  onChange={(e) => setShareEmail(e.target.value)}
-                />
-                <button onClick={handleShare}>Megosztás</button>
-              </div>
-            </section>
-
-            {/* A többi kód változatlan, de ha nem a saját adatunkat nézzük, tiltsuk le a rögzítést/törlést */}
-            {viewingUserId === user.sub && (
-               <section className="card main-card">
-                 {/* Új adat rögzítése csak saját magunknak */}
-               </section>
-            )}
-            
-            {/* Grafikon és lista (ezek automatikusan a szűrt rekordokat mutatják) */}
-          </>
-        )}
-      </div>
-    </GoogleOAuthProvider>
-  );
-}
   const monthlyData = getMonthlyConsumption();
   const getUnit = (t: string) => t === 'Áram' ? 'kWh' : t === 'Üzemanyag' ? 'Ft' : 'm³';
   const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : '⛽';
@@ -236,48 +162,61 @@ function App() {
           {user && (
             <div className="user-profile">
               <img src={user.picture} alt="Profil" />
-              <span>{user.name}</span>
-              <button className="btn-logout" onClick={handleLogout}>Kijelentkezés</button>
+              <button className="btn-logout" onClick={handleLogout}>Kilépés</button>
             </div>
           )}
         </header>
 
         {!user ? (
           <section className="card login-card">
-            <h2>Üdvözlünk!</h2>
-            <p>Kérlek, jelentkezz be a Google fiókoddal az adataid kezeléséhez.</p>
+            <h2>Bejelentkezés</h2>
             <div className="google-btn-container">
-              <GoogleLogin
-                onSuccess={handleLoginSuccess}
-                onError={() => alert('Bejelentkezési hiba történt')}
-              />
+              <GoogleLogin onSuccess={handleLoginSuccess} onError={() => alert('Hiba')} />
             </div>
           </section>
         ) : (
           <>
-            <section className="card main-card">
-              <h2>Új adat rögzítése</h2>
-              <div className="input-row">
-                <div className="input-field">
-                  <label>Típus</label>
-                  <select value={type} onChange={(e) => setType(e.target.value)}>
-                    <option value="Áram">⚡ Áram</option>
-                    <option value="Víz">💧 Víz</option>
-                    <option value="Gáz">🔥 Gáz</option>
-                    <option value="Üzemanyag">⛽ Üzemanyag</option>
-                  </select>
-                </div>
-                <div className="input-field">
-                  <label>Dátum</label>
-                  <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-                </div>
-                <div className="input-field">
-                  <label>{type === 'Üzemanyag' ? 'Összeg (Ft)' : 'Óraállás'}</label>
-                  <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" />
-                </div>
+            {/* MEGOSZTÁS SZEKCIÓ */}
+            <section className="card share-card">
+              <div className="view-selector">
+                <label>Kinek az adatait látod?</label>
+                <select value={viewingUserId || ''} onChange={(e) => handleUserChange(e.target.value)}>
+                  <option value={user.sub}>Saját adataim</option>
+                  {sharedWithMe.map((s: any) => (
+                    <option key={s.owner_id} value={s.owner_id}>🏠 {s.owner_email}</option>
+                  ))}
+                </select>
               </div>
-              <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
+              <div className="share-input-group">
+                <input 
+                  type="email" 
+                  placeholder="Email a megosztáshoz..." 
+                  value={shareEmail} 
+                  onChange={(e) => setShareEmail(e.target.value)} 
+                />
+                <button className="btn-share" onClick={handleShare}>Megosztás</button>
+              </div>
             </section>
+
+            {/* ADATBEVITEL (Csak ha a sajátunkat nézzük) */}
+            {viewingUserId === user.sub && (
+              <section className="card main-card">
+                <h2>Új mérés</h2>
+                <div className="input-row">
+                  <div className="input-field">
+                    <select value={type} onChange={(e) => setType(e.target.value)}>
+                      <option value="Áram">⚡ Áram</option>
+                      <option value="Víz">💧 Víz</option>
+                      <option value="Gáz">🔥 Gáz</option>
+                      <option value="Üzemanyag">⛽ Üzemanyag</option>
+                    </select>
+                  </div>
+                  <div className="input-field"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+                  <div className="input-field"><input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" /></div>
+                </div>
+                <button className="btn-primary" onClick={handleSave}>Mentés</button>
+              </section>
+            )}
 
             <div className="controls-bar">
               <div className="filter-buttons">
@@ -288,10 +227,8 @@ function App() {
                 ))}
               </div>
               <div className="view-toggle">
-                <button className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>
-                  {filter === 'Üzemanyag' ? 'Lista' : 'Napi állás'}
-                </button>
-                <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi összesítő</button>
+                <button className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>Napi</button>
+                <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
               </div>
             </div>
 
@@ -303,24 +240,17 @@ function App() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                       <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
                       <YAxis stroke="#94a3b8" fontSize={10} />
-                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} labelStyle={{color: '#fff'}} />
-                      <Line type="monotone" dataKey="ertek" stroke={getColor(filter)} strokeWidth={3} dot={{r: 4, fill: getColor(filter)}} />
+                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
+                      <Line type="monotone" dataKey="ertek" stroke={getColor(filter)} strokeWidth={3} dot={{r: 4}} />
                     </LineChart>
                   ) : (
                     <BarChart data={monthlyData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                       <XAxis dataKey="honap" stroke="#94a3b8" fontSize={10} />
                       <YAxis stroke="#94a3b8" fontSize={10} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
-                        itemStyle={{ color: '#f8fafc' }}
-                        labelStyle={{ color: '#fff', marginBottom: '4px', fontWeight: 'bold' }}
-                        formatter={(v: any) => [`${v.toLocaleString()} ${getUnit(filter)}`, 'Összesen']}
-                      />
+                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} itemStyle={{color: '#fff'}} />
                       <Bar dataKey="fogyasztas" radius={[4, 4, 0, 0]}>
-                        {monthlyData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={getColor(filter)} />
-                        ))}
+                        {monthlyData.map((e, i) => <Cell key={i} fill={getColor(filter)} />)}
                       </Bar>
                     </BarChart>
                   )}
@@ -330,18 +260,16 @@ function App() {
 
             <section className="list-section">
               <div className="records-grid">
-                {[...currentTypeRecords].reverse().map((rec: any) => (
+                {currentTypeRecords.slice().reverse().map((rec: any) => (
                   <div key={rec.Id} className={`record-item ${rec.Type}`}>
                     <div className="record-info">
-                      <span className="record-type">{getIcon(rec.Type)} {rec.Type}</span>
-                      <span className="record-date">📅 {rec.FormattedDate}</span>
+                      <span>{getIcon(rec.Type)} {rec.Type} - {rec.FormattedDate}</span>
                     </div>
                     <div className="record-value-container">
-                      <div className="val-box">
-                        <span className="record-value">{parseFloat(rec.Value).toLocaleString()}</span>
-                        <span className="record-unit">{getUnit(rec.Type)}</span>
-                      </div>
-                      <button className="btn-delete" onClick={() => handleDelete(rec.Id)}>Törlés</button>
+                      <span className="record-value">{parseFloat(rec.Value).toLocaleString()} {getUnit(rec.Type)}</span>
+                      {viewingUserId === user.sub && (
+                        <button className="btn-delete" onClick={() => alert("Törlés funkció...")}>❌</button>
+                      )}
                     </div>
                   </div>
                 ))}
