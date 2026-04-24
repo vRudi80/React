@@ -1,3 +1,4 @@
+// ideas-backend/index.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -8,8 +9,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- 1. IDE MÁSOLD A SAJÁT GOOGLE CLIENT ID-DAT! ---
-const GOOGLE_CLIENT_ID = "197361744572-ih728hq5jft3fqfd1esvktvrd8i97kcp.apps.googleusercontent.com"; 
+// A TE FIX CLIENT ID-D
+const GOOGLE_CLIENT_ID = "197361744572-ih728hq5jft3fqfd1esvktvrd8i97kcp.apps.googleusercontent.com";
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const pool = mysql.createPool({
@@ -20,7 +21,7 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
 });
 
-// MIDDLEWARE - Ez ellenőrzi a Google belépést minden kérés előtt
+// MIDDLEWARE - Token ellenőrzés
 async function verifyUser(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).send('Nincs token!');
@@ -56,7 +57,7 @@ app.get('/api/records', verifyUser, async (req, res) => {
   }
 });
 
-// 2. MENTÉS (UserId-val együtt)
+// 2. MENTÉS
 app.post('/api/records', verifyUser, async (req, res) => {
   const { type, value, date } = req.body;
   try {
@@ -71,7 +72,7 @@ app.post('/api/records', verifyUser, async (req, res) => {
   }
 });
 
-// 3. TÖRLÉS (Csak ha a sajátja)
+// 3. TÖRLÉS
 app.delete('/api/records/:id', verifyUser, async (req, res) => {
   const { id } = req.params;
   try {
@@ -81,7 +82,7 @@ app.delete('/api/records/:id', verifyUser, async (req, res) => {
     );
     
     if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Nincs ilyen rekord vagy nincs hozzá jogosultságod' });
+      return res.status(404).json({ error: 'Nincs ilyen rekord vagy nincs hozzáférésed' });
     }
     res.status(204).end();
   } catch (err) {
