@@ -60,6 +60,34 @@ app.delete('/api/records/:id', async (req, res) => {
     res.status(500).json({ error: 'Szerver hiba törléskor' });
   }
 });
+const { OAuth2Client } = require('google-auth-library');
+const client = new OAuth2Client('A_TE_CLIENT_ID_D');
 
+// Middleware a felhasználó azonosítására
+async function verifyUser(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).send('Be kell jelentkezned!');
+  
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: 'A_TE_CLIENT_ID_D',
+    });
+    const payload = ticket.getPayload();
+    req.userId = payload.sub; // Ez a felhasználó egyedi Google azonosítója
+    next();
+  } catch (err) {
+    res.status(401).send('Érvénytelen munkamenet');
+  }
+}
+
+// Lekérdezésnél csak a saját adatait kapja meg:
+app.get('/api/records', verifyUser, async (req, res) => {
+  const [rows] = await pool.query(
+    'SELECT * FROM utility_records WHERE UserId = ? ORDER BY Date DESC',
+    [req.userId]
+  );
+  res.json(rows);
+});
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`API fut a ${PORT} porton`));
