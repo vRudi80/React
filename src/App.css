@@ -365,6 +365,52 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .record-value {
   font-family: 'Courier New', Courier, monospace; /* Opcionális, ha "műszerfalszerű" számokat akarsz */
 }
+.login-card {
+  text-align: center;
+  padding: 3rem;
+  margin-top: 2rem;
+}
+
+.google-btn-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 10px;
+}
+
+.user-profile img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--primary);
+}
+
+.user-profile span {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.btn-logout {
+  background: transparent;
+  border: 1px solid #475569;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.btn-logout:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
 /* Színkódok élénkebben */
 .record-item.Áram { border-left-color: #fbbf24; }
 .record-item.Víz { border-left-color: #38bdf8; }
