@@ -195,11 +195,28 @@ function App() {
           <>
             <div className="top-row">
               <section className="card share-card compact">
-                <select value={viewingUserId || ''} onChange={(e) => handleUserChange(e.target.value)}>
-                  <option value={user.sub}>🏠 Saját adataim</option>
-                  {sharedWithMe.map((s: any) => (<option key={s.owner_id} value={s.owner_id}>🤝 {s.owner_email}</option>))}
-                </select>
-              </section>
+    <div className="view-selector">
+      <select value={viewingUserId || ''} onChange={(e) => handleUserChange(e.target.value)}>
+        <option value={user.sub}>🏠 Saját adataim</option>
+        {sharedWithMe.map((s: any) => (
+          <option key={s.owner_id} value={s.owner_id}>🤝 {s.owner_email}</option>
+        ))}
+      </select>
+    </div>
+    
+    {/* EZ A RÉSZ HIÁNYZOTT: */}
+    {viewingUserId === user.sub && (
+      <div className="share-input-group">
+        <input 
+          type="email" 
+          placeholder="Email a megosztáshoz..." 
+          value={shareEmail} 
+          onChange={(e) => setShareEmail(e.target.value)} 
+        />
+        <button className="btn-share" onClick={handleShare}>+</button>
+      </div>
+    )}
+  </section>
             </div>
 
             {viewingUserId === user.sub && (
