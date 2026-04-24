@@ -221,7 +221,48 @@ select, input, .btn-primary {
   height: 30px;
   border-radius: 50%;
 }
+.share-card {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  background: linear-gradient(145deg, #1e293b, #0f172a);
+}
 
+.view-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.view-selector label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.share-input-group {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.share-input-group input {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.btn-share {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 0 15px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-share:hover {
+  background: #059669;
+}
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
 }
