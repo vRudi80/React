@@ -82,7 +82,7 @@ function App() {
         body: JSON.stringify({ sharedWithEmail: shareEmail.toLowerCase() })
       });
       if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
-    } catch (err) { alert("Hiba"); }
+    } catch (err) { alert("Hiba a megosztáskor"); }
   };
 
   const handleUserChange = (newId: string) => {
@@ -91,7 +91,7 @@ function App() {
   };
 
   const handleSave = async () => {
-    if (!value || !date || !user) return alert("Minden mezőt tölts ki!");
+    if (!value || !date || !user) return alert("Mezők!");
     try {
       await fetch(`${BACKEND_URL}/api/records`, {
         method: 'POST',
@@ -106,12 +106,12 @@ function App() {
   const handleDelete = async (id: number) => {
     if (!window.confirm("Biztosan törlöd?") || !user) return;
     try {
-      const res = await fetch(`${BACKEND_URL}/api/records/${id}`, { 
+      await fetch(`${BACKEND_URL}/api/records/${id}`, { 
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${user.token}` }
       });
-      if (res.ok) fetchRecords(user.token);
-    } catch (err) { alert("Hiba a törlés során!"); }
+      fetchRecords(user.token);
+    } catch (err) { alert("Hiba"); }
   };
 
   const currentTypeRecords = records.filter((r: any) => r.Type === filter)
@@ -128,11 +128,11 @@ function App() {
       });
     } else {
       for (let i = 1; i < currentTypeRecords.length; i++) {
-        const current = currentTypeRecords[i];
-        const prev = currentTypeRecords[i - 1];
-        if (parseFloat(current.Value) >= parseFloat(prev.Value)) {
-          const monthKey = current.FormattedDate.substring(0, 7);
-          monthlySum[monthKey] = (monthlySum[monthKey] || 0) + (parseFloat(current.Value) - parseFloat(prev.Value));
+        const currentVal = parseFloat(currentTypeRecords[i].Value);
+        const prevVal = parseFloat(currentTypeRecords[i - 1].Value);
+        if (currentVal >= prevVal) {
+          const monthKey = currentTypeRecords[i].FormattedDate.substring(0, 7);
+          monthlySum[monthKey] = (monthlySum[monthKey] || 0) + (currentVal - prevVal);
         }
       }
     }
@@ -148,11 +148,11 @@ function App() {
       });
     } else {
       for (let i = 1; i < currentTypeRecords.length; i++) {
-        const current = currentTypeRecords[i];
-        const prev = currentTypeRecords[i - 1];
-        if (parseFloat(current.Value) >= parseFloat(prev.Value)) {
-          const yearKey = current.FormattedDate.substring(0, 4);
-          annualSum[yearKey] = (annualSum[yearKey] || 0) + (parseFloat(current.Value) - parseFloat(prev.Value));
+        const currentVal = parseFloat(currentTypeRecords[i].Value);
+        const prevVal = parseFloat(currentTypeRecords[i - 1].Value);
+        if (currentVal >= prevVal) {
+          const yearKey = currentTypeRecords[i].FormattedDate.substring(0, 4);
+          annualSum[yearKey] = (annualSum[yearKey] || 0) + (currentVal - prevVal);
         }
       }
     }
@@ -170,11 +170,9 @@ function App() {
         <header className="main-header">
           <h1 className="logo">Rezsiapp</h1>
           {user && (
-            <div className="header-actions">
-              <div className="user-info">
-                <img src={user.picture} alt="Profil" />
-                <button className="btn-logout" onClick={handleLogout}>Kilépés</button>
-              </div>
+            <div className="user-info">
+              <img src={user.picture} alt="Profil" />
+              <button className="btn-logout" onClick={handleLogout}>Kilépés</button>
             </div>
           )}
         </header>
@@ -219,4 +217,79 @@ function App() {
                       <option value="Áram">⚡ Áram</option>
                       <option value="Víz">💧 Víz</option>
                       <option value="Gáz">🔥 Gáz</option>
-                      <option value="Üzemanyag">⛽
+                      <option value="Üzemanyag">⛽ Üzemanyag</option>
+                    </select>
+                  </div>
+                  <div className="input-field"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+                  <div className="input-field"><input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" /></div>
+                </div>
+                <button className="btn-primary" onClick={handleSave}>Mentés</button>
+              </section>
+            )}
+
+            <div className="controls-bar">
+              <div className="filter-buttons">
+                {['Áram', 'Víz', 'Gáz', 'Üzemanyag'].map(f => (
+                  <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>
+                      {getIcon(f)} {f}
+                  </button>
+                ))}
+              </div>
+              <div className="view-toggle">
+                <button className={viewMode === 'daily' ? 'active' : ''} onClick={() => setViewMode('daily')}>Napi</button>
+                <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
+                <button className={viewMode === 'annual' ? 'active' : ''} onClick={() => setViewMode('annual')}>Éves</button>
+              </div>
+            </div>
+
+            <section className="card chart-card">
+              <div style={{ width: '100%', height: 300 }}>
+                <ResponsiveContainer>
+                  {viewMode === 'daily' ? (
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                      <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
+                      <YAxis stroke="#94a3b8" fontSize={10} />
+                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
+                      <Line type="monotone" dataKey="ertek" stroke={getColor(filter)} strokeWidth={3} dot={{r: 4}} />
+                    </LineChart>
+                  ) : (
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                      <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
+                      <YAxis stroke="#94a3b8" fontSize={10} />
+                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} formatter={(v: any) => [`${v.toLocaleString()} ${getUnit(filter)}`, 'Összesen']} />
+                      <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>
+                        {chartData.map((e, i) => <Cell key={i} fill={getColor(filter)} />)}
+                      </Bar>
+                    </BarChart>
+                  )}
+                </ResponsiveContainer>
+              </div>
+            </section>
+
+            <section className="list-section">
+              <div className="records-grid">
+                {currentTypeRecords.slice().reverse().map((rec: any) => (
+                  <div key={rec.Id} className={`record-item ${rec.Type}`}>
+                    <div className="record-info">
+                      <span>{getIcon(rec.Type)} {rec.Type} - {rec.FormattedDate}</span>
+                    </div>
+                    <div className="record-value-container">
+                      <span className="record-value">{parseFloat(rec.Value).toLocaleString()} {getUnit(rec.Type)}</span>
+                      {viewingUserId === user.sub && (
+                        <button className="btn-delete" onClick={() => handleDelete(rec.Id)}>❌</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+      </div>
+    </GoogleOAuthProvider>
+  );
+}
+
+export default App;
