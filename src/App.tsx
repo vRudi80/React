@@ -17,19 +17,15 @@ function App() {
   const [sharedWithMe, setSharedWithMe] = useState([]);
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   
-  // Állapotok a rögzítéshez
   const [recordMode, setRecordMode] = useState<'meter' | 'invoice'>('meter');
   const [type, setType] = useState('Áram');
   const [value, setValue] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [invoiceMonth, setInvoiceMonth] = useState(new Date().toISOString().substring(0, 7));
 
-  // Állapotok a grafikoni megjelenítéshez
   const [filter, setFilter] = useState('Áram');
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('usage'); 
-
-  const [shareEmail, setShareEmail] = useState('');
 
   const fetchAll = async (token: string, targetId?: string) => {
     const id = targetId || viewingUserId || user?.sub;
@@ -77,26 +73,27 @@ function App() {
   };
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user || !value) return alert("Kérlek adj meg egy értéket!");
     try {
-      if (recordMode === 'meter') {
-        if (!value || !date) return alert("Töltsd ki a mezőket!");
-        await fetch(`${BACKEND_URL}/api/records`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-          body: JSON.stringify({ type, value: parseFloat(value), date })
-        });
-      } else {
-        if (!value || !invoiceMonth) return alert("Töltsd ki a mezőket!");
+      // Ha üzemanyag, akkor MINDIG számlaként kezeljük
+      const isInvoice = recordMode === 'invoice' || type === 'Üzemanyag';
+      
+      if (isInvoice) {
         await fetch(`${BACKEND_URL}/api/invoices`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
           body: JSON.stringify({ type, amount: parseFloat(value), month: invoiceMonth })
         });
+      } else {
+        await fetch(`${BACKEND_URL}/api/records`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+          body: JSON.stringify({ type, value: parseFloat(value), date })
+        });
       }
       setValue('');
       fetchAll(user.token);
-    } catch (err) { alert("Hiba a mentéskor!"); }
+    } catch (err) { alert("Mentési hiba!"); }
   };
 
   const handleDelete = async (id: number) => {
@@ -117,7 +114,6 @@ function App() {
 
   // --- GRAFIKON LOGIKA ---
   const getChartData = () => {
-    // Ha napi nézet és költség, kényszerítsük havi nézetre vagy adjunk üres adatot
     if (displayMode === 'cost' && viewMode === 'daily') return [];
 
     if (viewMode === 'daily') {
@@ -133,25 +129,20 @@ function App() {
       const currentTypeRecords = records.filter((r: any) => r.Type === filter)
         .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
       
-      if (filter === 'Üzemanyag') {
-        currentTypeRecords.forEach((r: any) => {
-          const key = r.FormattedDate.substring(0, keyLen);
+      // Üzemanyagnál a "Fogyasztás" mód most már a havi összesített tankolási összeget mutatja, ha oda mentjük
+      // De ha meg akarod tartani a litereket, akkor a records-ból vonjuk le. 
+      // Most a kérésed szerint a számlákba megy minden üzemanyag.
+      for (let i = 1; i < currentTypeRecords.length; i++) {
+        const curV = parseFloat(currentTypeRecords[i].Value);
+        const preV = parseFloat(currentTypeRecords[i-1].Value);
+        if (curV >= preV) {
+          const key = currentTypeRecords[i].FormattedDate.substring(0, keyLen);
           if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
-          dataMap[key].usage += parseFloat(r.Value);
-        });
-      } else {
-        for (let i = 1; i < currentTypeRecords.length; i++) {
-          const curV = parseFloat(currentTypeRecords[i].Value);
-          const preV = parseFloat(currentTypeRecords[i-1].Value);
-          if (curV >= preV) {
-            const key = currentTypeRecords[i].FormattedDate.substring(0, keyLen);
-            if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
-            dataMap[key].usage += (curV - preV);
-          }
+          dataMap[key].usage += (curV - preV);
         }
       }
     } else {
-      // KÖLTSÉG MÓD
+      // KÖLTSÉG MÓD (Ide kerül be az összes üzemanyag számla is)
       invoices.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
         const key = inv.Month.substring(0, keyLen);
         if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
@@ -166,7 +157,7 @@ function App() {
   };
 
   const finalData = getChartData();
-  const getUnit = () => displayMode === 'cost' ? 'Ft' : (filter === 'Áram' ? 'kWh' : filter === 'Üzemanyag' ? 'Ft' : 'm³');
+  const getUnit = () => displayMode === 'cost' ? 'Ft' : (filter === 'Áram' ? 'kWh' : 'm³');
   const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : t === 'Üzemanyag' ? '⛽' : '📊';
   const getColor = () => {
     if (displayMode === 'cost') return filter === 'Összes' ? '#6366f1' : '#10b981';
@@ -212,24 +203,40 @@ function App() {
             {viewingUserId === user.sub && (
               <section className="card record-card">
                 <div className="record-type-toggle">
-                  <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')}>Mérőóra állás</button>
-                  <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>Számla összeg</button>
+                  <button className={recordMode === 'meter' && type !== 'Üzemanyag' ? 'active' : ''} 
+                          disabled={type === 'Üzemanyag'}
+                          onClick={() => setRecordMode('meter')}>
+                    Mérőóra állás
+                  </button>
+                  <button className={recordMode === 'invoice' || type === 'Üzemanyag' ? 'active' : ''} 
+                          onClick={() => setRecordMode('invoice')}>
+                    Számla / Tankolás összeg
+                  </button>
                 </div>
+                
                 <div className="input-row">
-                  <select value={type} onChange={(e) => setType(e.target.value)}>
+                  <select value={type} onChange={(e) => {
+                    setType(e.target.value);
+                    if (e.target.value === 'Üzemanyag') setRecordMode('invoice');
+                  }}>
                     <option value="Áram">⚡ Áram</option>
                     <option value="Víz">💧 Víz</option>
                     <option value="Gáz">🔥 Gáz</option>
                     <option value="Üzemanyag">⛽ Üzemanyag</option>
                   </select>
-                  {recordMode === 'meter' ? (
+
+                  {(recordMode === 'meter' && type !== 'Üzemanyag') ? (
                     <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                   ) : (
                     <input type="month" value={invoiceMonth} onChange={(e) => setInvoiceMonth(e.target.value)} />
                   )}
-                  <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder={recordMode === 'meter' ? "Mérőóra állása" : "Összeg (Ft)"} />
+
+                  <input type="number" value={value} onChange={(e) => setValue(e.target.value)} 
+                         placeholder={type === 'Üzemanyag' ? "Tankolás összege (Ft)" : (recordMode === 'meter' ? "Mérőóra állása" : "Számla összege (Ft)")} />
                 </div>
-                <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
+                <button className="btn-primary" onClick={handleSave}>
+                  {type === 'Üzemanyag' ? 'Tankolás mentése' : 'Adat mentése'}
+                </button>
               </section>
             )}
 
@@ -248,8 +255,14 @@ function App() {
               </div>
 
               <div className="mode-toggle">
-                <button className={displayMode === 'usage' ? 'active' : ''} onClick={() => { setDisplayMode('usage'); if(filter==='Összes') setFilter('Áram'); }}>Fogyasztás</button>
-                <button className={displayMode === 'cost' ? 'active' : ''} onClick={() => setDisplayMode('cost')}>Költség (Ft)</button>
+                <button className={displayMode === 'usage' ? 'active' : ''} 
+                        disabled={filter === 'Üzemanyag'}
+                        onClick={() => { setDisplayMode('usage'); if(filter==='Összes') setFilter('Áram'); }}>
+                  Fogyasztás
+                </button>
+                <button className={displayMode === 'cost' ? 'active' : ''} onClick={() => setDisplayMode('cost')}>
+                  Költség (Ft)
+                </button>
               </div>
 
               <div className="view-toggle">
@@ -262,7 +275,7 @@ function App() {
             <section className="card chart-card">
               <div style={{ width: '100%', height: 300 }}>
                 {displayMode === 'cost' && viewMode === 'daily' ? (
-                  <div className="no-data-msg">Költség adatok csak Havi/Éves nézetben érhetőek el.</div>
+                  <div className="no-data-msg">Válassz Havi vagy Éves nézetet a költségekhez!</div>
                 ) : (
                   <ResponsiveContainer>
                     {viewMode === 'daily' ? (
@@ -281,7 +294,7 @@ function App() {
                         <Tooltip 
                           contentStyle={{backgroundColor: '#1e293b', border: 'none'}} 
                           itemStyle={{color: '#f8fafc'}} 
-                          formatter={(v: any) => [`${v.toLocaleString()} ${getUnit()}`, displayMode === 'usage' ? 'Fogyasztás' : 'Számla']}
+                          formatter={(v: any) => [`${v.toLocaleString()} ${getUnit()}`, displayMode === 'usage' ? 'Fogyasztás' : 'Összeg']}
                         />
                         <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>
                           {finalData.map((e, i) => <Cell key={i} fill={getColor()} />)}
