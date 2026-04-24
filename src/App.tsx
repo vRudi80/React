@@ -177,26 +177,33 @@ function App() {
         ) : (
           <>
             {/* MEGOSZTÁS SZEKCIÓ */}
-            <section className="card share-card">
-              <div className="view-selector">
-                <label>Kinek az adatait látod?</label>
-                <select value={viewingUserId || ''} onChange={(e) => handleUserChange(e.target.value)}>
-                  <option value={user.sub}>Saját adataim</option>
-                  {sharedWithMe.map((s: any) => (
-                    <option key={s.owner_id} value={s.owner_id}>🏠 {s.owner_email}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="share-input-group">
-                <input 
-                  type="email" 
-                  placeholder="Email a megosztáshoz..." 
-                  value={shareEmail} 
-                  onChange={(e) => setShareEmail(e.target.value)} 
-                />
-                <button className="btn-share" onClick={handleShare}>Megosztás</button>
-              </div>
-            </section>
+<section className="card share-card">
+  <div className="view-selector">
+    <label>Kinek az adatait látod?</label>
+    <select value={viewingUserId || ''} onChange={(e) => handleUserChange(e.target.value)}>
+      <option value={user.sub}>Saját adataim</option>
+      {sharedWithMe.map((s: any) => (
+        <option key={s.owner_id} value={s.owner_id}>🏠 {s.owner_email}</option>
+      ))}
+    </select>
+  </div>
+
+  {/* CSAK AKKOR LÁTSZIK, HA SAJÁT MAGUNKNÁL VAGYUNK */}
+  {viewingUserId === user.sub && (
+    <>
+      <hr style={{ border: '0', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '15px 0' }} />
+      <div className="share-input-group">
+        <input 
+          type="email" 
+          placeholder="Email a megosztáshoz..." 
+          value={shareEmail} 
+          onChange={(e) => setShareEmail(e.target.value)} 
+        />
+        <button className="btn-share" onClick={handleShare}>Megosztás</button>
+      </div>
+    </>
+  )}
+</section>
 
             {/* ADATBEVITEL (Csak ha a sajátunkat nézzük) */}
             {viewingUserId === user.sub && (
