@@ -4,7 +4,7 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer, Cell 
 } from 'recharts';
 import { GoogleOAuthProvider, GoogleLogin, googleLogout } from '@react-oauth/google';
-import { jwtDecode } from "jwt-decode"; // npm install jwt-decode is kellhet
+import { jwtDecode } from "jwt-decode";
 import './App.css';
 
 const BACKEND_URL = "https://react-ideas-backend.onrender.com";
@@ -19,7 +19,6 @@ function App() {
   const [filter, setFilter] = useState('Áram');
   const [viewMode, setViewMode] = useState('daily');
 
-  // Adatok lekérése a tokennel
   const fetchRecords = async (token: string) => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/records`, {
@@ -32,13 +31,16 @@ function App() {
     } catch (err) { console.error(err); }
   };
 
-  // Automatikus belépés ellenőrzése (ha már be volt lépve)
   useEffect(() => {
     const savedToken = localStorage.getItem('userToken');
     if (savedToken) {
-      const decoded: any = jwtDecode(savedToken);
-      setUser({ ...decoded, token: savedToken });
-      fetchRecords(savedToken);
+      try {
+        const decoded: any = jwtDecode(savedToken);
+        setUser({ ...decoded, token: savedToken });
+        fetchRecords(savedToken);
+      } catch (e) {
+        localStorage.removeItem('userToken');
+      }
     }
   }, []);
 
@@ -46,7 +48,6 @@ function App() {
     const token = credentialResponse.credential;
     const decoded: any = jwtDecode(token);
     const userData = { ...decoded, token: token };
-    
     setUser(userData);
     localStorage.setItem('userToken', token);
     fetchRecords(token);
@@ -86,7 +87,6 @@ function App() {
     } catch (err) { alert("Hiba a törlés során!"); }
   };
 
-  // --- Adatfeldolgozó logika (Ugyanaz, mint korábban) ---
   const currentTypeRecords = records
     .filter((r: any) => r.Type === filter)
     .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
@@ -133,7 +133,6 @@ function App() {
   const getIcon = (t: string) => t === 'Áram' ? '⚡' : t === 'Víz' ? '💧' : t === 'Gáz' ? '🔥' : '⛽';
   const getColor = (t: string) => t === 'Áram' ? '#fbbf24' : t === 'Víz' ? '#38bdf8' : t === 'Gáz' ? '#f87171' : '#a855f7';
 
-  // --- JSX (Bejelentkező képernyő vagy Dashboard) ---
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <div className="app-wrapper">
@@ -161,7 +160,6 @@ function App() {
           </section>
         ) : (
           <>
-            {/* INNEN JÖN A MÁR ISMERT DASHBOARD RÉSZ */}
             <section className="card main-card">
               <h2>Új adat rögzítése</h2>
               <div className="input-row">
@@ -203,7 +201,6 @@ function App() {
             </div>
 
             <section className="card chart-card">
-              <h2>{filter} - {viewMode === 'daily' ? 'Bejegyzések' : 'Havi összesen'}</h2>
               <div style={{ width: '100%', height: 300 }}>
                 <ResponsiveContainer>
                   {viewMode === 'daily' ? (
