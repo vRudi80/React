@@ -16,30 +16,32 @@ const pool = mysql.createPool({
 });
 
 // LEKÉRDEZÉS
-app.get('/api/records', async (req, res) => {
+app.get('/api/records', verifyUser, async (req, res) => {
   try {
+    // FONTOS: A lekérdezés végére KELL a WHERE UserId = ?
     const [rows] = await pool.query(
-      'SELECT Id, Type, Value, DATE_FORMAT(Date, "%Y-%m-%d %H:%i") as FormattedDate FROM utility_records ORDER BY Date DESC'
+      'SELECT Id, Type, Value, DATE_FORMAT(Date, "%Y-%m-%d %H:%i") as FormattedDate FROM utility_records WHERE UserId = ? ORDER BY Date DESC',
+      [req.userId] // Csak a bejelentkezett felhasználó ID-ja alapján szűrünk
     );
     res.json(rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'DB hiba' });
+    console.error("Lekérdezési hiba:", err);
+    res.status(500).json({ error: 'Adatbázis hiba' });
   }
 });
 
-// MENTÉS
-app.post('/api/records', async (req, res) => {
+app.post('/api/records', verifyUser, async (req, res) => {
   const { type, value, date } = req.body;
   try {
-    const [result] = await pool.query(
-      'INSERT INTO utility_records (Type, Value, Date) VALUES (?, ?, ?)',
-      [type, value, date]
+    // FONTOS: Mentéskor beírjuk a UserId-t is!
+    await pool.query(
+      'INSERT INTO utility_records (Type, Value, Date, UserId) VALUES (?, ?, ?, ?)',
+      [type, value, date, req.userId]
     );
-    res.status(201).json({ id: result.insertId });
+    res.status(201).json({ success: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Mentési hiba' });
+    console.error("Mentési hiba:", err);
+    res.status(500).json({ error: 'Mentési hiba történt' });
   }
 });
 
