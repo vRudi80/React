@@ -16,17 +16,25 @@ function App() {
   const [invoices, setInvoices] = useState([]);
   const [sharedWithMe, setSharedWithMe] = useState([]);
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  const [shareEmail, setShareEmail] = useState('');
   
   const [recordMode, setRecordMode] = useState<'meter' | 'invoice'>('meter');
   const [type, setType] = useState('Áram');
   const [value, setValue] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [invoiceMonth, setInvoiceMonth] = useState(new Date().toISOString().substring(0, 7));
-
   const [filter, setFilter] = useState('Áram');
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('usage'); 
-  const [shareEmail, setShareEmail] = useState('');
+
+  // KÖZÖS KIJELENTKEZTETŐ FÜGGVÉNY
+  const forceLogout = () => {
+    googleLogout();
+    setUser(null);
+    setRecords([]);
+    setInvoices([]);
+    localStorage.removeItem('userToken');
+  };
 
   const fetchAll = async (token: string, targetId?: string) => {
     const id = targetId || viewingUserId || user?.sub;
@@ -38,13 +46,20 @@ function App() {
         fetch(`${BACKEND_URL}/api/invoices?userId=${id}`, { headers }),
         fetch(`${BACKEND_URL}/api/shares/me`, { headers })
       ]);
+
+      // HA BÁRMELYIK 401-ET AD, KILÉPTETÜNK
+      if (recRes.status === 401 || invRes.status === 401 || shareRes.status === 401) {
+        forceLogout();
+        return;
+      }
+
       const recData = recRes.ok ? await recRes.json() : [];
       const invData = invRes.ok ? await invRes.json() : [];
       const shrData = shareRes.ok ? await shareRes.json() : [];
       setRecords(Array.isArray(recData) ? recData : []);
       setInvoices(Array.isArray(invData) ? invData : []);
       setSharedWithMe(Array.isArray(shrData) ? shrData : []);
-    } catch (err) { console.error("Hiba az adatok frissítésekor"); }
+    } catch (err) { console.error("Hiba"); }
   };
 
   useEffect(() => {
@@ -52,10 +67,15 @@ function App() {
     if (savedToken) {
       try {
         const decoded: any = jwtDecode(savedToken);
-        setUser({ ...decoded, token: savedToken });
-        setViewingUserId(decoded.sub);
-        fetchAll(savedToken, decoded.sub);
-      } catch (e) { localStorage.removeItem('userToken'); }
+        // EXTRA ELLENŐRZÉS: Ha a token már eleve lejárt megnyitáskor
+        if (decoded.exp * 1000 < Date.now()) {
+          forceLogout();
+        } else {
+          setUser({ ...decoded, token: savedToken });
+          setViewingUserId(decoded.sub);
+          fetchAll(savedToken, decoded.sub);
+        }
+      } catch (e) { forceLogout(); }
     }
   }, []);
 
@@ -68,28 +88,19 @@ function App() {
     fetchAll(token, decoded.sub);
   };
 
-  const handleLogout = () => {
-    googleLogout();
-    setUser(null);
-    setRecords([]);
-    setInvoices([]);
-    localStorage.removeItem('userToken');
-  };
-
   const handleSave = async () => {
     if (!user || !value) return alert("Adj meg egy értéket!");
     try {
       const isInv = recordMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
-      const body = isInv 
-        ? { type, amount: parseFloat(value), month: invoiceMonth }
-        : { type, value: parseFloat(value), date };
+      const body = isInv ? { type, amount: parseFloat(value), month: invoiceMonth } : { type, value: parseFloat(value), date };
       const res = await fetch(`${BACKEND_URL}${isInv ? '/api/invoices' : '/api/records'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
         body: JSON.stringify(body)
       });
+      if (res.status === 401) return forceLogout();
       if (res.ok) { setValue(''); fetchAll(user.token); }
-    } catch (err) { alert("Hiba a mentéskor"); }
+    } catch (err) { alert("Hiba!"); }
   };
 
   const handleShare = async () => {
@@ -100,18 +111,19 @@ function App() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
         body: JSON.stringify({ sharedWithEmail: shareEmail.toLowerCase() })
       });
+      if (res.status === 401) return forceLogout();
       if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
-      else { alert("Hiba a megosztáskor!"); }
-    } catch (err) { alert("Szerver hiba"); }
+    } catch (err) { alert("Hiba"); }
   };
 
   const handleDelete = async (id: number, listType: 'meter' | 'invoice') => {
-    if (!window.confirm("Biztosan törlöd ezt a tételt?") || !user) return;
+    if (!window.confirm("Biztosan törlöd?") || !user) return;
     const endpoint = listType === 'meter' ? `/api/records/${id}` : `/api/invoices/${id}`;
     const res = await fetch(`${BACKEND_URL}${endpoint}`, { 
       method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } 
     });
-    if (res.ok) { fetchAll(user.token); }
+    if (res.status === 401) return forceLogout();
+    if (res.ok) fetchAll(user.token);
   };
 
   const handleUserChange = (newId: string) => {
@@ -119,13 +131,13 @@ function App() {
     fetchAll(user.token, newId);
   };
 
+  // --- GRAFIKON LOGIKA ---
   const getChartData = () => {
     if (displayMode === 'cost' && viewMode === 'daily') return [];
     const keyLen = viewMode === 'monthly' ? 7 : 4;
     const dataMap: { [key: string]: { usage: number, cost: number } } = {};
     if (displayMode === 'usage') {
-      const filtered = records.filter((r: any) => r.Type === filter)
-        .sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
+      const filtered = records.filter((r: any) => r.Type === filter).sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
       if (viewMode === 'daily') return filtered.map((r: any) => ({ label: r.FormattedDate.split(' ')[0], ertek: parseFloat(r.Value) }));
       for (let i = 1; i < filtered.length; i++) {
         const curV = parseFloat(filtered[i].Value);
@@ -143,9 +155,7 @@ function App() {
         dataMap[key].cost += parseFloat(inv.Amount);
       });
     }
-    return Object.keys(dataMap).sort().map(key => ({
-      label: key, ertek: displayMode === 'usage' ? Math.round(dataMap[key].usage * 100) / 100 : dataMap[key].cost
-    }));
+    return Object.keys(dataMap).sort().map(key => ({ label: key, ertek: displayMode === 'usage' ? Math.round(dataMap[key].usage * 100) / 100 : dataMap[key].cost }));
   };
 
   const finalData = getChartData();
@@ -167,7 +177,6 @@ function App() {
       case 'Szemétszállítás': return '#94a3b8'; default: return '#3b82f6';
     }
   };
-
   const isInvoiceOnly = (t: string) => ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(t);
   const combinedList = [
     ...(filter === 'Összes' ? [] : records.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter' }))),
@@ -182,7 +191,7 @@ function App() {
           {user && (
             <div className="user-info">
               <img src={user.picture} alt="Profil" />
-              <button className="btn-logout" onClick={handleLogout}>Kilépés</button>
+              <button className="btn-logout" onClick={forceLogout}>Kilépés</button>
             </div>
           )}
         </header>
@@ -190,13 +199,8 @@ function App() {
         {!user ? (
           <section className="card login-card">
             <h2>Üdvözöljük a Rezsiappban!</h2>
-            <p className="login-desc">
-              Az alkalmazás használatához biztonságos Google-bejelentkezés szükséges. 
-              Adataidat védett módon, a saját fiókodhoz kötve tároljuk.
-            </p>
-            <div className="google-btn-container">
-              <GoogleLogin onSuccess={handleLoginSuccess} onError={() => alert('Hiba')} />
-            </div>
+            <p className="login-desc">Jelentkezzen be az adatai kezeléséhez.</p>
+            <div className="google-btn-container"><GoogleLogin onSuccess={handleLoginSuccess} /></div>
           </section>
         ) : (
           <>
@@ -210,7 +214,7 @@ function App() {
                 </div>
                 {viewingUserId === user.sub && (
                   <div className="share-input-group">
-                    <input type="email" placeholder="Email a megosztáshoz..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
+                    <input type="email" placeholder="Email..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
                     <button className="btn-share" onClick={handleShare}>+</button>
                   </div>
                 )}
