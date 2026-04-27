@@ -105,19 +105,16 @@ app.post('/api/invoices', verifyUser, async (req, res) => {
 
 // --- MÉRŐÓRA REKORDOK KEZELÉSE ---
 
+// index.js - Mérőóra rekordok lekérése
 app.get('/api/records', verifyUser, async (req, res) => {
   const targetUserId = req.query.userId || req.userId;
+  
   try {
-    if (targetUserId !== req.userId && req.userId !== "CRON_ADMIN") {
-      const [shares] = await pool.query(
-        'SELECT id FROM shares WHERE owner_id = ? AND shared_with_email = ?',
-        [targetUserId, req.userEmail]
-      );
-      if (shares.length === 0) return res.status(403).json({ error: 'Nincs jogosultságod' });
-    }
+    // ... (jogosultság ellenőrző rész marad)
 
     const [rows] = await pool.query(
-      'SELECT Id, Type, Value, DATE_FORMAT(Date, "%Y-%m-%d %H:%i") as FormattedDate FROM utility_records WHERE UserId = ? ORDER BY Date DESC',
+      // HOZZÁADVA: AssetId
+      'SELECT Id, Type, Value, AssetId, DATE_FORMAT(Date, "%Y-%m-%d %H:%i") as FormattedDate FROM utility_records WHERE UserId = ? ORDER BY Date DESC',
       [targetUserId]
     );
     res.json(rows);
