@@ -46,6 +46,13 @@ function App() {
     localStorage.removeItem('userToken');
   };
 
+  const getAllowedTypes = (assetId: string) => {
+    if (!assetId || assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
+    const asset = assets.find((a: any) => String(a.Id) === String(assetId));
+    if (!asset) return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
+    return asset.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'] : ['Üzemanyag'];
+  };
+
   const fetchAll = async (token: string, targetId?: string) => {
     const id = targetId || viewingUserId || user?.sub;
     if (!id || !token) return;
@@ -66,7 +73,7 @@ function App() {
       setInvoices(Array.isArray(invData) ? invData : []);
       setAssets(Array.isArray(astData) ? astData : []);
       setSharedWithMe(Array.isArray(shrData) ? shrData : []);
-    } catch (err) { console.error("Hiba az adatok letöltésekor"); }
+    } catch (err) { console.error("Hiba"); }
   };
 
   useEffect(() => {
@@ -84,22 +91,18 @@ function App() {
     }
   }, []);
 
-  const getAllowedTypes = (assetId: string) => {
-    if (!assetId || assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
-    const asset = assets.find((a: any) => String(a.Id) === String(assetId));
-    if (!asset) return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
-    return asset.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'] : ['Üzemanyag'];
-  };
-
-  // SZINKRONIZÁCIÓ: Ha felül választasz, a lenti rögzítő is álljon át
+  // --- OKOS SZINKRONIZÁCIÓ ---
   useEffect(() => {
     if (selectedAssetId !== 'all') {
       setTargetAssetId(selectedAssetId);
     }
   }, [selectedAssetId]);
 
-  // TÍPUS ELLENŐRZÉS: Ha autót választasz, kényszerítsük az Üzemanyagot
   useEffect(() => {
+    const asset = assets.find((a: any) => String(a.Id) === String(targetAssetId));
+    if (asset && asset.Category === 'car') {
+      setRecordMode('invoice'); // Autó esetén kényszerített számla mód
+    }
     const allowed = getAllowedTypes(targetAssetId);
     if (!allowed.includes(type)) {
       setType(allowed[0]);
@@ -117,7 +120,7 @@ function App() {
   };
 
   const handleAssetSave = async () => {
-    if (!newAsset.friendlyName) return alert("Adj nevet az eszköznek!");
+    if (!newAsset.friendlyName) return alert("Adj nevet!");
     const method = editingAssetId ? 'PUT' : 'POST';
     const url = editingAssetId ? `${BACKEND_URL}/api/assets/${editingAssetId}` : `${BACKEND_URL}/api/assets`;
     const res = await fetch(url, {
@@ -147,8 +150,13 @@ function App() {
   };
 
   const handleSave = async () => {
-    if (!value || !targetAssetId) return alert("Válaszd ki az eszközt és adj meg értéket!");
-    const isInv = recordMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
+    if (!value || !targetAssetId) return alert("Válassz ki egy eszközt!");
+    
+    // Autó esetén Mindig számla módba mentünk
+    const asset = assets.find((a: any) => String(a.Id) === String(targetAssetId));
+    const finalMode = (asset && asset.Category === 'car') ? 'invoice' : recordMode;
+    const isInv = finalMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
+    
     const body = { 
       type, 
       value: parseFloat(value), 
@@ -156,6 +164,7 @@ function App() {
       date: isInv ? invoiceDate : meterDate, 
       assetId: parseInt(targetAssetId) 
     };
+
     const res = await fetch(`${BACKEND_URL}${isInv ? '/api/invoices' : '/api/records'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
@@ -171,7 +180,6 @@ function App() {
     fetchAll(user.token);
   };
 
-  // --- LOGIKA ---
   const getChartData = () => {
     const keyLen = viewMode === 'monthly' ? 7 : 4;
     const dataMap: { [key: string]: { usage: number, cost: number } } = {};
@@ -220,7 +228,6 @@ function App() {
     }
   };
 
-  const chartData = getChartData();
   const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
   const fInv = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
   const combinedList = [
@@ -229,6 +236,7 @@ function App() {
   ].sort((a, b) => new Date(b.d).getTime() - new Date(a.d).getTime());
 
   const currentAssetView = assets.find(a => String(a.Id) === String(selectedAssetId));
+  const currentTargetAsset = assets.find(a => String(a.Id) === String(targetAssetId));
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -255,7 +263,7 @@ function App() {
               <input placeholder="Név" value={newAsset.friendlyName} onChange={(e) => setNewAsset({...newAsset, friendlyName: e.target.value})} />
               {newAsset.category === 'property' ? (
                 <>
-                  <input placeholder="Település" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} />
+                  <input placeholder="Város" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} />
                   <input placeholder="Cím" value={newAsset.street} onChange={(e) => setNewAsset({...newAsset, street: e.target.value})} />
                   <input placeholder="m²" type="number" value={newAsset.area} onChange={(e) => setNewAsset({...newAsset, area: e.target.value})} />
                 </>
@@ -304,7 +312,15 @@ function App() {
 
             <section className="card record-card">
               <div className="record-type-toggle">
-                <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')}>📟 Óraállás</button>
+                {/* Ha autó van kiválasztva, a Mérőóra gomb inaktív */}
+                <button 
+                  className={recordMode === 'meter' ? 'active' : ''} 
+                  onClick={() => setRecordMode('meter')}
+                  disabled={currentTargetAsset?.Category === 'car'}
+                  style={currentTargetAsset?.Category === 'car' ? { opacity: 0.3, cursor: 'not-allowed' } : {}}
+                >
+                  📟 Óraállás
+                </button>
                 <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>💰 Számla</button>
               </div>
               <div className="input-row">
@@ -318,7 +334,7 @@ function App() {
                 <input type="date" value={recordMode === 'meter' ? meterDate : invoiceDate} onChange={(e) => recordMode === 'meter' ? setMeterDate(e.target.value) : setInvoiceDate(e.target.value)} />
                 <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték" />
               </div>
-              <button className="btn-primary" onClick={handleSave}>Mentés</button>
+              <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
             </section>
 
             <div className="controls-bar">
@@ -343,12 +359,12 @@ function App() {
             <section className="card chart-card">
               <div style={{ width: '100%', height: 300 }}>
                 <ResponsiveContainer>
-                  <BarChart data={chartData}>
+                  <BarChart data={getChartData()}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                     <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                     <YAxis fontSize={10} stroke="#94a3b8" />
                     <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} itemStyle={{color: '#f8fafc'}} />
-                    <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{chartData.map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
+                    <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{getChartData().map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
