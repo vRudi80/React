@@ -91,17 +91,23 @@ function App() {
     }
   }, []);
 
-  // --- OKOS SZINKRONIZÁCIÓ ---
+  // --- GRAFIKON AUTO-SZŰRÉS ---
   useEffect(() => {
-    if (selectedAssetId !== 'all') {
-      setTargetAssetId(selectedAssetId);
+    if (selectedAssetId === 'all') return;
+    const asset = assets.find((a: any) => String(a.Id) === String(selectedAssetId));
+    if (asset && asset.Category === 'car') {
+      setFilter('Üzemanyag');
+      setDisplayMode('cost');
     }
-  }, [selectedAssetId]);
+    // Szinkronizáljuk a rögzítőt is
+    setTargetAssetId(selectedAssetId);
+  }, [selectedAssetId, assets]);
 
+  // --- RÖGZÍTŐ AUTO-SZABÁLYOK ---
   useEffect(() => {
     const asset = assets.find((a: any) => String(a.Id) === String(targetAssetId));
     if (asset && asset.Category === 'car') {
-      setRecordMode('invoice'); // Autó esetén kényszerített számla mód
+      setRecordMode('invoice');
     }
     const allowed = getAllowedTypes(targetAssetId);
     if (!allowed.includes(type)) {
@@ -150,13 +156,8 @@ function App() {
   };
 
   const handleSave = async () => {
-    if (!value || !targetAssetId) return alert("Válassz ki egy eszközt!");
-    
-    // Autó esetén Mindig számla módba mentünk
-    const asset = assets.find((a: any) => String(a.Id) === String(targetAssetId));
-    const finalMode = (asset && asset.Category === 'car') ? 'invoice' : recordMode;
-    const isInv = finalMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
-    
+    if (!value || !targetAssetId) return alert("Válassz eszközt!");
+    const isInv = recordMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
     const body = { 
       type, 
       value: parseFloat(value), 
@@ -164,7 +165,6 @@ function App() {
       date: isInv ? invoiceDate : meterDate, 
       assetId: parseInt(targetAssetId) 
     };
-
     const res = await fetch(`${BACKEND_URL}${isInv ? '/api/invoices' : '/api/records'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
@@ -228,6 +228,7 @@ function App() {
     }
   };
 
+  const chartData = getChartData();
   const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
   const fInv = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
   const combinedList = [
@@ -312,7 +313,6 @@ function App() {
 
             <section className="card record-card">
               <div className="record-type-toggle">
-                {/* Ha autó van kiválasztva, a Mérőóra gomb inaktív */}
                 <button 
                   className={recordMode === 'meter' ? 'active' : ''} 
                   onClick={() => setRecordMode('meter')}
@@ -334,7 +334,7 @@ function App() {
                 <input type="date" value={recordMode === 'meter' ? meterDate : invoiceDate} onChange={(e) => recordMode === 'meter' ? setMeterDate(e.target.value) : setInvoiceDate(e.target.value)} />
                 <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték" />
               </div>
-              <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
+              <button className="btn-primary" onClick={handleSave}>Mentés</button>
             </section>
 
             <div className="controls-bar">
@@ -359,12 +359,12 @@ function App() {
             <section className="card chart-card">
               <div style={{ width: '100%', height: 300 }}>
                 <ResponsiveContainer>
-                  <BarChart data={getChartData()}>
+                  <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                     <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                     <YAxis fontSize={10} stroke="#94a3b8" />
                     <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} itemStyle={{color: '#f8fafc'}} />
-                    <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{getChartData().map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
+                    <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{chartData.map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
