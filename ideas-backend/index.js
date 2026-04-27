@@ -206,15 +206,20 @@ app.get('/api/assets', verifyUser, async (req, res) => {
 // Új eszköz hozzáadása
 app.post('/api/assets', verifyUser, async (req, res) => {
   const { category, friendlyName, city, street, houseNumber, plateNumber, fuelType, area } = req.body;
+  
+  // Debug log: látni fogod a konzolon, mi érkezik
+  console.log("Mentés próbája:", req.body);
+
   try {
-    await pool.query(
+    const [result] = await pool.query(
       `INSERT INTO assets (UserId, Category, FriendlyName, City, Street, HouseNumber, PlateNumber, FuelType, Area) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [req.userId, category, friendlyName, city, street, houseNumber, plateNumber, fuelType, area || null]
     );
-    res.status(201).json({ success: true });
+    res.status(201).json({ success: true, id: result.insertId });
   } catch (err) {
-    res.status(500).json({ error: 'Hiba az eszköz mentésekor' });
+    console.error("SQL HIBA AZ ESZKÖZMENTÉSNÉL:", err); // Ez kiírja a pontos hibát a Render logba!
+    res.status(500).json({ error: 'Hiba az adatbázis mentésnél', details: err.message });
   }
 });
 
