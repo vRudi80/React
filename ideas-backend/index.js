@@ -191,5 +191,65 @@ app.post('/api/login-sync', verifyUser, async (req, res) => {
   }
 });
 
+// --- ESZKÖZÖK (ASSETS) KEZELÉSE ---
+
+// Eszközök lekérése
+app.get('/api/assets', verifyUser, async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM assets WHERE UserId = ?', [req.userId]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Hiba az eszközök lekérésekor' });
+  }
+});
+
+// Új eszköz hozzáadása
+app.post('/api/assets', verifyUser, async (req, res) => {
+  const { category, friendlyName, city, street, houseNumber, plateNumber, fuelType, area } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO assets (UserId, Category, FriendlyName, City, Street, HouseNumber, PlateNumber, FuelType, Area) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.userId, category, friendlyName, city, street, houseNumber, plateNumber, fuelType, area || null]
+    );
+    res.status(201).json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Hiba az eszköz mentésekor' });
+  }
+});
+
+// Eszköz törlése
+app.delete('/api/assets/:id', verifyUser, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM assets WHERE Id = ? AND UserId = ?', [req.params.id, req.userId]);
+    res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: 'Hiba a törléskor' });
+  }
+});
+
+// MÓDOSÍTOTT MENTÉSEK (AssetId támogatása)
+app.post('/api/records', verifyUser, async (req, res) => {
+  const { type, value, date, assetId } = req.body;
+  try {
+    await pool.query(
+      'INSERT INTO utility_records (Type, Value, Date, UserId, AssetId) VALUES (?, ?, ?, ?, ?)',
+      [type, value, date, req.userId, assetId || null]
+    );
+    res.status(201).json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Hiba' }); }
+});
+
+app.post('/api/invoices', verifyUser, async (req, res) => {
+  const { type, amount, date, assetId } = req.body;
+  try {
+    await pool.query(
+      'INSERT INTO invoices (Type, Amount, Month, UserId, AssetId) VALUES (?, ?, ?, ?, ?)',
+      [type, amount, date, req.userId, assetId || null]
+    );
+    res.status(201).json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Hiba' }); }
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Szerver fut: ${PORT}`));
