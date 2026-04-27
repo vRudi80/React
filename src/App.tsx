@@ -376,20 +376,40 @@ function App() {
             </section>
 
             <section className="list-section">
-              <div className="list-container">
-                {combinedList.map((item: any, idx) => (
-                  <div key={idx} className={`record-item ${item.Type}`}>
-                    <div className="record-info">
-                      <span>{item.lType === 'meter' ? '📟' : '💰'} {item.d ? item.d.substring(0, 10) : ''} ({item.Type})</span>
-                    </div>
-                    <div className="record-value-container">
-                      <span className="record-value">{parseFloat(item.Value).toLocaleString()} {item.lType === 'meter' ? (item.Type === 'Áram' ? 'kWh' : 'm³') : 'Ft'}</span>
-                      <button className="btn-delete" onClick={() => handleDelete(item.Id || item.id, item.lType)}>❌</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+  <div className="list-container">
+    {combinedList.map((item: any, idx) => {
+      // Megkeressük az eszköz adatait az ID alapján
+      const asset = assets.find((a: any) => a.Id == item.AssetId);
+      
+      return (
+        <div key={idx} className={`record-item ${item.Type}`}>
+          <div className="record-info">
+            <div className="record-main-line">
+              <span>{item.lType === 'meter' ? '📟' : '💰'} {item.d ? item.d.substring(0, 10) : ''} ({item.Type})</span>
+            </div>
+            {/* ÚJ: Eszköz neve és rendszáma */}
+            <div className="asset-tag">
+              {asset ? (
+                <>
+                  {asset.Category === 'car' ? '🚗' : '🏠'} {asset.FriendlyName}
+                  {asset.Category === 'car' && a.PlateNumber ? ` • ${a.PlateNumber}` : ''}
+                </>
+              ) : (
+                <span className="no-asset">Nincs eszközhöz kötve</span>
+              )}
+            </div>
+          </div>
+          <div className="record-value-container">
+            <span className="record-value">
+              {parseFloat(item.Value).toLocaleString()} {item.lType === 'meter' ? (item.Type === 'Áram' ? 'kWh' : 'm³') : 'Ft'}
+            </span>
+            <button className="btn-delete" onClick={() => handleDelete(item.Id || item.id, item.lType)}>❌</button>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+</section>
           </>
         )}
       </div>
