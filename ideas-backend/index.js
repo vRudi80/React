@@ -175,5 +175,21 @@ app.get('/api/shares/me', verifyUser, async (req, res) => {
   }
 });
 
+// Belépés naplózása
+app.post('/api/login-sync', verifyUser, async (req, res) => {
+  try {
+    await pool.query(
+      `INSERT INTO users (google_id, email, last_login) 
+       VALUES (?, ?, NOW()) 
+       ON DUPLICATE KEY UPDATE last_login = NOW(), email = VALUES(email)`,
+      [req.userId, req.userEmail]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Login log hiba:", err);
+    res.status(500).json({ error: 'Nem sikerült naplózni a belépést' });
+  }
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Szerver fut: ${PORT}`));
