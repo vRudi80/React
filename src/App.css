@@ -96,3 +96,33 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="month"]::-web
   from { opacity: 0; transform: translateY(-10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+.btn-edit-small {
+  background: transparent;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 8px;
+  transition: all 0.2s;
+}
+
+.btn-edit-small:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.asset-form-buttons {
+  display: flex;
+  gap: 10px;
+  grid-column: span 2;
+}
+
+.btn-secondary {
+  background: #475569;
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
