@@ -39,20 +39,11 @@ function App() {
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('usage'); 
 
-  // --- SEGÉDFÜGGVÉNYEK ---
-
   const forceLogout = () => {
     googleLogout();
     setUser(null);
     setRecords([]); setInvoices([]); setAssets([]);
     localStorage.removeItem('userToken');
-  };
-
-  const getAllowedTypes = (assetId: string) => {
-    if (!assetId || assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
-    const asset = assets.find((a: any) => String(a.Id) === String(assetId));
-    if (!asset) return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
-    return asset.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'] : ['Üzemanyag'];
   };
 
   const fetchAll = async (token: string, targetId?: string) => {
@@ -75,10 +66,8 @@ function App() {
       setInvoices(Array.isArray(invData) ? invData : []);
       setAssets(Array.isArray(astData) ? astData : []);
       setSharedWithMe(Array.isArray(shrData) ? shrData : []);
-    } catch (err) { console.error("Hiba"); }
+    } catch (err) { console.error("Hiba az adatok letöltésekor"); }
   };
-
-  // --- EFFECTEK ---
 
   useEffect(() => {
     const savedToken = localStorage.getItem('userToken');
@@ -95,22 +84,27 @@ function App() {
     }
   }, []);
 
-  // SZINKRONIZÁCIÓ: Ha felül választasz eszközt, a rögzítő is álljon oda!
+  const getAllowedTypes = (assetId: string) => {
+    if (!assetId || assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
+    const asset = assets.find((a: any) => String(a.Id) === String(assetId));
+    if (!asset) return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
+    return asset.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'] : ['Üzemanyag'];
+  };
+
+  // SZINKRONIZÁCIÓ: Ha felül választasz, a lenti rögzítő is álljon át
   useEffect(() => {
     if (selectedAssetId !== 'all') {
       setTargetAssetId(selectedAssetId);
     }
   }, [selectedAssetId]);
 
-  // TÍPUS ELLENŐRZÉS: Ne maradhasson Áram, ha autót választasz
+  // TÍPUS ELLENŐRZÉS: Ha autót választasz, kényszerítsük az Üzemanyagot
   useEffect(() => {
     const allowed = getAllowedTypes(targetAssetId);
     if (!allowed.includes(type)) {
       setType(allowed[0]);
     }
-  }, [targetAssetId]);
-
-  // --- HANDLEREK ---
+  }, [targetAssetId, assets]);
 
   const handleLoginSuccess = async (res: any) => {
     const token = res.credential;
@@ -123,7 +117,7 @@ function App() {
   };
 
   const handleAssetSave = async () => {
-    if (!newAsset.friendlyName) return alert("Adj nevet!");
+    if (!newAsset.friendlyName) return alert("Adj nevet az eszköznek!");
     const method = editingAssetId ? 'PUT' : 'POST';
     const url = editingAssetId ? `${BACKEND_URL}/api/assets/${editingAssetId}` : `${BACKEND_URL}/api/assets`;
     const res = await fetch(url, {
@@ -138,29 +132,46 @@ function App() {
     }
   };
 
+  const startEditing = (asset: any) => {
+    setEditingAssetId(asset.Id);
+    setNewAsset({
+      category: asset.Category,
+      friendlyName: asset.FriendlyName,
+      city: asset.City || '',
+      street: asset.Street || '',
+      houseNumber: asset.HouseNumber || '',
+      plateNumber: asset.PlateNumber || '',
+      fuelType: asset.FuelType || 'Benzin',
+      area: asset.Area || ''
+    });
+  };
+
   const handleSave = async () => {
-    if (!value || !targetAssetId) return alert("Válassz ki egy eszközt a mentéshez!");
-    
+    if (!value || !targetAssetId) return alert("Válaszd ki az eszközt és adj meg értéket!");
     const isInv = recordMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
     const body = { 
       type, 
       value: parseFloat(value), 
       amount: parseFloat(value), 
       date: isInv ? invoiceDate : meterDate, 
-      assetId: parseInt(targetAssetId) // BIZTOSAN SZÁMKÉNT KÜLDJÜK
+      assetId: parseInt(targetAssetId) 
     };
-
     const res = await fetch(`${BACKEND_URL}${isInv ? '/api/invoices' : '/api/records'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(body)
     });
     if (res.ok) { setValue(''); fetchAll(user.token); alert("Mentve!"); }
-    else { alert("Hiba a mentésnél!"); }
   };
 
-  // --- GRAFIKON ÉS LISTA ---
+  const handleDelete = async (id: number, listType: 'meter' | 'invoice') => {
+    if (!window.confirm("Biztosan törlöd?")) return;
+    const endpoint = listType === 'meter' ? `/api/records/${id}` : `/api/invoices/${id}`;
+    await fetch(`${BACKEND_URL}${endpoint}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } });
+    fetchAll(user.token);
+  };
 
+  // --- LOGIKA ---
   const getChartData = () => {
     const keyLen = viewMode === 'monthly' ? 7 : 4;
     const dataMap: { [key: string]: { usage: number, cost: number } } = {};
@@ -190,13 +201,34 @@ function App() {
     return Object.keys(dataMap).sort().map(key => ({ label: key, ertek: displayMode === 'usage' ? Math.round(dataMap[key].usage * 100) / 100 : dataMap[key].cost }));
   };
 
+  const getIcon = (t: string) => {
+    switch(t) {
+      case 'Áram': return '⚡'; case 'Víz': return '💧'; case 'Gáz': return '🔥';
+      case 'Üzemanyag': return '⛽'; case 'Internet': return '🌐'; 
+      case 'Szemétszállítás': return '🗑️'; case 'Összes': return '📊';
+      default: return '📄';
+    }
+  };
+
+  const getColor = (t: string = filter) => {
+    if (displayMode === 'cost' && t !== 'Összes') return '#10b981';
+    if (t === 'Összes') return '#6366f1';
+    switch(t) {
+      case 'Áram': return '#fbbf24'; case 'Víz': return '#38bdf8'; case 'Gáz': return '#f87171';
+      case 'Üzemanyag': return '#a855f7'; case 'Internet': return '#ec4899';
+      case 'Szemétszállítás': return '#94a3b8'; default: return '#3b82f6';
+    }
+  };
+
+  const chartData = getChartData();
   const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
   const fInv = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
-  
   const combinedList = [
     ...(filter === 'Összes' ? [] : fRec.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
     ...fInv.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
   ].sort((a, b) => new Date(b.d).getTime() - new Date(a.d).getTime());
+
+  const currentAssetView = assets.find(a => String(a.Id) === String(selectedAssetId));
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -223,8 +255,8 @@ function App() {
               <input placeholder="Név" value={newAsset.friendlyName} onChange={(e) => setNewAsset({...newAsset, friendlyName: e.target.value})} />
               {newAsset.category === 'property' ? (
                 <>
-                  <input placeholder="Város" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} />
-                  <input placeholder="Utca" value={newAsset.street} onChange={(e) => setNewAsset({...newAsset, street: e.target.value})} />
+                  <input placeholder="Település" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} />
+                  <input placeholder="Cím" value={newAsset.street} onChange={(e) => setNewAsset({...newAsset, street: e.target.value})} />
                   <input placeholder="m²" type="number" value={newAsset.area} onChange={(e) => setNewAsset({...newAsset, area: e.target.value})} />
                 </>
               ) : (
@@ -267,10 +299,6 @@ function App() {
                   <option value="all">🌐 Összesített nézet</option>
                   {assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</option>))}
                 </select>
-                <div className="share-input-group">
-                  <input type="email" placeholder="Megosztás..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
-                  <button className="btn-share" onClick={() => { /* megosztás logika */ }}>+</button>
-                </div>
               </section>
             </div>
 
@@ -290,7 +318,7 @@ function App() {
                 <input type="date" value={recordMode === 'meter' ? meterDate : invoiceDate} onChange={(e) => recordMode === 'meter' ? setMeterDate(e.target.value) : setInvoiceDate(e.target.value)} />
                 <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték" />
               </div>
-              <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
+              <button className="btn-primary" onClick={handleSave}>Mentés</button>
             </section>
 
             <div className="controls-bar">
@@ -300,7 +328,7 @@ function App() {
                     {getIcon(f)} {f}
                   </button>
                 ))}
-                {displayMode === 'cost' && selectedAssetId === 'all' && <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>📊 Összes</button>}
+                {displayMode === 'cost' && (!currentAssetView || currentAssetView.Category !== 'car') && <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>📊 Összes</button>}
               </div>
               <div className="mode-toggle">
                 <button className={displayMode === 'usage' ? 'active' : ''} disabled={['Üzemanyag', 'Internet', 'Szemétszállítás', 'Összes'].includes(filter)} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
@@ -315,12 +343,12 @@ function App() {
             <section className="card chart-card">
               <div style={{ width: '100%', height: 300 }}>
                 <ResponsiveContainer>
-                  <BarChart data={getChartData()}>
+                  <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                     <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                     <YAxis fontSize={10} stroke="#94a3b8" />
                     <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} itemStyle={{color: '#f8fafc'}} />
-                    <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{getChartData().map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
+                    <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{chartData.map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -343,7 +371,7 @@ function App() {
                         </div>
                       </div>
                       <div className="record-value-container">
-                        <span className="record-value">{parseFloat(item.Value).toLocaleString()} Ft</span>
+                        <span className="record-value">{(parseFloat(item.Value) || 0).toLocaleString()} {item.lType === 'meter' ? (item.Type === 'Áram' ? 'kWh' : 'm³') : 'Ft'}</span>
                         <button className="btn-delete" onClick={() => handleDelete(item.Id || item.id, item.lType)}>❌</button>
                       </div>
                     </div>
