@@ -176,6 +176,20 @@ const handleAssetSave = async () => {
     }
   };
 
+  const getAllowedTypes = (assetId: string) => {
+  if (assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
+  
+  const asset = assets.find((a: any) => a.Id == assetId);
+  if (!asset) return [];
+
+  if (asset.Category === 'property') {
+    return ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'];
+  } else if (asset.Category === 'car') {
+    return ['Üzemanyag'];
+  }
+  return [];
+};
+  
   const getColor = (t: string = filter) => {
     if (displayMode === 'cost' && t !== 'Összes') return '#10b981';
     if (t === 'Összes') return '#6366f1';
