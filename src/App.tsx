@@ -35,13 +35,18 @@ function App() {
     houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' 
   });
 
-  const [filter, setFilter] = useState('Összes'); // Alapból az Összes-en induljon
+  const [filter, setFilter] = useState('Összes');
   const [viewMode, setViewMode] = useState('monthly'); 
-  const [displayMode, setDisplayMode] = useState('cost'); // Alapból a Költség nézet
+  const [displayMode, setDisplayMode] = useState('cost');
+
+  // --- FUNKCIÓK ---
 
   const forceLogout = () => {
     googleLogout();
     setUser(null);
+    setRecords([]);
+    setInvoices([]);
+    setAssets([]);
     localStorage.removeItem('userToken');
   };
 
@@ -62,7 +67,7 @@ function App() {
       setRecords(Array.isArray(recData) ? recData : []);
       setInvoices(Array.isArray(invData) ? invData : []);
       setAssets(Array.isArray(astData) ? astData : []);
-    } catch (err) { console.error("Hiba az adatok letöltésekor"); }
+    } catch (err) { console.error("Adatlekérési hiba"); }
   };
 
   useEffect(() => {
@@ -80,26 +85,20 @@ function App() {
   const getAllowedTypes = (assetId: string) => {
     if (!assetId || assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
     const asset = assets.find((a: any) => String(a.Id) === String(assetId));
-    if (!asset) return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
-    return asset.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'] : ['Üzemanyag'];
+    return asset?.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'] : ['Üzemanyag'];
   };
 
-  // --- AUTOMATIKUS SZŰRÉS VÁLTÁSKOR ---
   useEffect(() => {
-    const allowed = getAllowedTypes(selectedAssetId);
     if (selectedAssetId !== 'all') {
       setTargetAssetId(selectedAssetId);
       const asset = assets.find(a => String(a.Id) === String(selectedAssetId));
       if (asset?.Category === 'car') {
         setFilter('Üzemanyag');
         setDisplayMode('cost');
-      } else if (filter === 'Üzemanyag') {
-        setFilter('Áram');
       }
     } else {
-       // Ha összesített nézetbe váltunk, engedjük az "Összes" gombot
-       setFilter('Összes');
-       setDisplayMode('cost');
+      setFilter('Összes');
+      setDisplayMode('cost');
     }
   }, [selectedAssetId, assets.length]);
 
@@ -110,7 +109,8 @@ function App() {
     if (!allowed.includes(type)) setType(allowed[0]);
   }, [targetAssetId, assets]);
 
-  // --- GRAFIKON ADATOK GENERÁLÁSA ---
+  // --- GRAFIKON ADATOK ---
+
   const chartData = useMemo(() => {
     const keyLen = viewMode === 'monthly' ? 7 : 4;
     const dataMap: { [key: string]: any } = {};
@@ -142,6 +142,39 @@ function App() {
     }
     return Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
   }, [records, invoices, assets, filter, displayMode, viewMode, selectedAssetId]);
+
+  // --- HANDLEREK ---
+
+  const handleAssetSave = async () => {
+    if (!newAsset.friendlyName) return alert("Adj nevet az eszköznek!");
+    const method = editingAssetId ? 'PUT' : 'POST';
+    const url = editingAssetId ? `${BACKEND_URL}/api/assets/${editingAssetId}` : `${BACKEND_URL}/api/assets`;
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+      body: JSON.stringify(newAsset)
+    });
+    if (res.ok) {
+      setEditingAssetId(null);
+      setNewAsset({ category: 'property', friendlyName: '', city: '', street: '', houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' });
+      setShowAssetManager(false);
+      fetchAll(user.token);
+    }
+  };
+
+  const startEditing = (asset: any) => {
+    setEditingAssetId(asset.Id);
+    setNewAsset({
+      category: asset.Category || 'property',
+      friendlyName: asset.FriendlyName || '',
+      city: asset.City || '',
+      street: asset.Street || '',
+      houseNumber: asset.HouseNumber || '',
+      plateNumber: asset.PlateNumber || '',
+      fuelType: asset.FuelType || 'Benzin',
+      area: asset.Area || ''
+    });
+  };
 
   const handleSave = async () => {
     if (!value || !targetAssetId) return alert("Válassz eszközt!");
@@ -178,11 +211,9 @@ function App() {
     }
   };
 
-  const fRecFinal = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
-  const fInvFinal = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
   const combinedList = [
-    ...(filter === 'Összes' ? [] : fRecFinal.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
-    ...fInvFinal.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
+    ...(filter === 'Összes' ? [] : records.filter(r => (selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId)) && r.Type === filter).map(r => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
+    ...invoices.filter(i => (selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId)) && (filter === 'Összes' ? true : i.Type === filter)).map(i => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
   ].sort((a, b) => new Date(b.d).getTime() - new Date(a.d).getTime());
 
   return (
@@ -193,34 +224,42 @@ function App() {
           {user && (
             <div className="user-info">
               <button className="btn-asset-toggle" onClick={() => setShowAssetManager(!showAssetManager)}>🏠 Eszközök</button>
-              <img src={user.picture} alt="Profil" onClick={forceLogout} title="Kijelentkezés" />
+              <img src={user.picture} alt="Profil" />
+              <button className="btn-logout" onClick={forceLogout}>Kilépés</button>
             </div>
           )}
         </header>
 
         {showAssetManager && user && (
           <section className="card asset-manager-card">
+            <h3>{editingAssetId ? "Módosítás" : "Új eszköz"}</h3>
             <div className="asset-form">
               <select value={newAsset.category} onChange={(e) => setNewAsset({...newAsset, category: e.target.value})}>
                 <option value="property">🏠 Ingatlan</option><option value="car">🚗 Jármű</option>
               </select>
               <input placeholder="Név" value={newAsset.friendlyName} onChange={(e) => setNewAsset({...newAsset, friendlyName: e.target.value})} />
-              <button className="btn-primary" onClick={handleAssetSave}>Mentés</button>
+              {newAsset.category === 'property' ? (
+                <><input placeholder="Város" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} /><input placeholder="m²" type="number" value={newAsset.area} onChange={(e) => setNewAsset({...newAsset, area: e.target.value})} /></>
+              ) : (
+                <input placeholder="Rendszám" value={newAsset.plateNumber} onChange={(e) => setNewAsset({...newAsset, plateNumber: e.target.value})} />
+              )}
+              <div className="asset-form-buttons">
+                 <button className="btn-primary" onClick={handleAssetSave}>Mentés</button>
+                 {editingAssetId && <button className="btn-secondary" onClick={() => { setEditingAssetId(null); setNewAsset({category:'property',friendlyName:'',city:'',street:'',houseNumber:'',plateNumber:'',fuelType:'Benzin',area:''})}}>Mégse</button>}
+              </div>
             </div>
             <div className="asset-list">
               {assets.map((a: any) => (
                 <div key={a.Id} className="asset-item">
-                  <span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span>
-                  <button onClick={() => { setEditingAssetId(a.Id); setNewAsset({...a, category: a.Category, friendlyName: a.FriendlyName}); }}>✏️</button>
+                  <div className="asset-item-info"><span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span><small>{a.Category === 'car' ? a.PlateNumber : a.City}</small></div>
+                  <button className="btn-edit-small" onClick={() => startEditing(a)}>✏️</button>
                 </div>
               ))}
             </div>
           </section>
         )}
 
-        {!user ? (
-          <section className="card login-card"><GoogleLogin onSuccess={(res) => { const token = res.credential!; const decoded: any = jwtDecode(token); setUser({...decoded, token}); localStorage.setItem('userToken', token); fetchAll(token, decoded.sub); }} /></section>
-        ) : (
+        {user ? (
           <>
             <div className="top-row">
               <section className="card share-card compact">
@@ -254,12 +293,10 @@ function App() {
                 {['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'].map(f => (
                   <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>{getIcon(f)} {f}</button>
                 ))}
-                {displayMode === 'cost' && (
-                   <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>{getIcon('Összes')} Összes</button>
-                )}
+                {displayMode === 'cost' && <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>{getIcon('Összes')} Összes</button>}
               </div>
               <div className="mode-toggle">
-                <button className={displayMode === 'usage' ? 'active' : ''} disabled={filter === 'Üzemanyag' || filter === 'Összes' || filter === 'Internet' || filter === 'Szemétszállítás'} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
+                <button className={displayMode === 'usage' ? 'active' : ''} disabled={['Üzemanyag', 'Internet', 'Szemétszállítás', 'Összes'].includes(filter)} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
                 <button className={displayMode === 'cost' ? 'active' : ''} onClick={() => setDisplayMode('cost')}>Költség</button>
               </div>
               <div className="view-toggle">
@@ -276,7 +313,7 @@ function App() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                       <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                       <YAxis fontSize={10} stroke="#94a3b8" />
-                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} itemStyle={{color: '#f8fafc'}} />
+                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
                       <Legend />
                       {(selectedAssetId === 'all' ? assets : assets.filter(a => String(a.Id) === String(selectedAssetId))).map((asset, idx) => (
                         <Bar key={asset.Id} dataKey={asset.FriendlyName} stackId="a" fill={selectedAssetId === 'all' ? ASSET_COLORS[idx % ASSET_COLORS.length] : getColor()} />
@@ -295,7 +332,7 @@ function App() {
                     <div key={idx} className={`record-item ${item.Type}`}>
                       <div className="record-info">
                         <div className="record-main-line"><span>{item.lType === 'meter' ? '📟' : '💰'} {String(item.d).substring(0, 10)} ({item.Type})</span></div>
-                        <div className="asset-tag">{asset ? <>{asset.Category === 'car' ? '🚗' : '🏠'} {asset.FriendlyName} {asset.Category === 'car' ? `• ${asset.PlateNumber}` : ''}</> : 'Nincs eszköz'}</div>
+                        <div className="asset-tag">{asset ? <>{asset.Category === 'car' ? '🚗' : '🏠'} {asset.FriendlyName}</> : 'Nincs eszköz'}</div>
                       </div>
                       <div className="record-value-container">
                         <span className="record-value">{(parseFloat(item.Value) || 0).toLocaleString()} {item.lType === 'meter' ? (item.Type === 'Áram' ? 'kWh' : 'm³') : 'Ft'}</span>
@@ -307,6 +344,8 @@ function App() {
               </div>
             </section>
           </>
+        ) : (
+          <section className="card login-card"><GoogleLogin onSuccess={(res) => { const token = res.credential!; const decoded: any = jwtDecode(token); setUser({...decoded, token}); localStorage.setItem('userToken', token); fetchAll(token, decoded.sub); }} /></section>
         )}
       </div>
     </GoogleOAuthProvider>
