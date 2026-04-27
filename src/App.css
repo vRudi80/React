@@ -54,3 +54,45 @@ select, input { background: #0f172a; border: 1px solid #334155; color: white; pa
 
 button:disabled { opacity: 0.3; cursor: not-allowed; }
 input[type="date"]::-webkit-calendar-picker-indicator, input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+
+.btn-asset-toggle {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  padding: 6px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: 600;
+  margin-right: 10px;
+}
+
+.asset-manager-card {
+  border: 1px solid var(--primary);
+  animation: slideDown 0.3s ease;
+}
+
+.asset-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.asset-list {
+  margin-top: 20px;
+  border-top: 1px solid #334155;
+  padding-top: 10px;
+}
+
+.asset-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px;
+  background: #0f172a;
+  margin-bottom: 5px;
+  border-radius: 8px;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
