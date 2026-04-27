@@ -18,16 +18,19 @@ function App() {
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [shareEmail, setShareEmail] = useState('');
   
+  // Rögzítési állapotok
   const [recordMode, setRecordMode] = useState<'meter' | 'invoice'>('meter');
   const [type, setType] = useState('Áram');
   const [value, setValue] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [invoiceMonth, setInvoiceMonth] = useState(new Date().toISOString().substring(0, 7));
+  const [meterDate, setMeterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Megjelenítési állapotok
   const [filter, setFilter] = useState('Áram');
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('usage'); 
 
-  // KÖZÖS KIJELENTKEZTETŐ FÜGGVÉNY
+  // --- KÖZÖS KIJELENTKEZTETŐ FÜGGVÉNY ---
   const forceLogout = () => {
     googleLogout();
     setUser(null);
@@ -47,7 +50,6 @@ function App() {
         fetch(`${BACKEND_URL}/api/shares/me`, { headers })
       ]);
 
-      // HA BÁRMELYIK 401-ET AD, KILÉPTETÜNK
       if (recRes.status === 401 || invRes.status === 401 || shareRes.status === 401) {
         forceLogout();
         return;
@@ -59,7 +61,7 @@ function App() {
       setRecords(Array.isArray(recData) ? recData : []);
       setInvoices(Array.isArray(invData) ? invData : []);
       setSharedWithMe(Array.isArray(shrData) ? shrData : []);
-    } catch (err) { console.error("Hiba"); }
+    } catch (err) { console.error("Adatlekérési hiba"); }
   };
 
   useEffect(() => {
@@ -67,7 +69,6 @@ function App() {
     if (savedToken) {
       try {
         const decoded: any = jwtDecode(savedToken);
-        // EXTRA ELLENŐRZÉS: Ha a token már eleve lejárt megnyitáskor
         if (decoded.exp * 1000 < Date.now()) {
           forceLogout();
         } else {
@@ -80,36 +81,31 @@ function App() {
   }, []);
 
   const handleLoginSuccess = async (credentialResponse: any) => {
-  const token = credentialResponse.credential;
-  const decoded: any = jwtDecode(token);
-  
-  // Állapotok frissítése
-  setUser({ ...decoded, token: token });
-  setViewingUserId(decoded.sub);
-  localStorage.setItem('userToken', token);
+    const token = credentialResponse.credential;
+    const decoded: any = jwtDecode(token);
+    setUser({ ...decoded, token: token });
+    setViewingUserId(decoded.sub);
+    localStorage.setItem('userToken', token);
 
-  // BELÉPÉS NAPLÓZÁSA A SZERVEREN
-  try {
-    await fetch(`${BACKEND_URL}/api/login-sync`, {
-      method: 'POST',
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-  } catch (err) {
-    console.error("Nem sikerült a belépés naplózása");
-  }
+    // Belépés naplózása
+    try {
+      await fetch(`${BACKEND_URL}/api/login-sync`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+    } catch (err) { console.error("Naplózási hiba"); }
 
-  // Adatok betöltése
-  fetchAll(token, decoded.sub);
-};
+    fetchAll(token, decoded.sub);
+  };
 
   const handleSave = async () => {
     if (!user || !value) return alert("Adj meg egy értéket!");
     try {
       const isInv = recordMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
-      const body = isInv ? { type, amount: parseFloat(value), month: invoiceMonth } : { type, value: parseFloat(value), date };
+      const body = isInv 
+        ? { type, amount: parseFloat(value), date: invoiceDate } 
+        : { type, value: parseFloat(value), date: meterDate };
+
       const res = await fetch(`${BACKEND_URL}${isInv ? '/api/invoices' : '/api/records'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
@@ -117,7 +113,7 @@ function App() {
       });
       if (res.status === 401) return forceLogout();
       if (res.ok) { setValue(''); fetchAll(user.token); }
-    } catch (err) { alert("Hiba!"); }
+    } catch (err) { alert("Hiba a mentéskor!"); }
   };
 
   const handleShare = async () => {
@@ -130,7 +126,7 @@ function App() {
       });
       if (res.status === 401) return forceLogout();
       if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
-    } catch (err) { alert("Hiba"); }
+    } catch (err) { alert("Hiba!"); }
   };
 
   const handleDelete = async (id: number, listType: 'meter' | 'invoice') => {
@@ -153,6 +149,7 @@ function App() {
     if (displayMode === 'cost' && viewMode === 'daily') return [];
     const keyLen = viewMode === 'monthly' ? 7 : 4;
     const dataMap: { [key: string]: { usage: number, cost: number } } = {};
+
     if (displayMode === 'usage') {
       const filtered = records.filter((r: any) => r.Type === filter).sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
       if (viewMode === 'daily') return filtered.map((r: any) => ({ label: r.FormattedDate.split(' ')[0], ertek: parseFloat(r.Value) }));
@@ -167,7 +164,9 @@ function App() {
       }
     } else {
       invoices.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
-        const key = inv.Month.substring(0, keyLen);
+        // Mivel az inv.Month már DATE típus a DB-ben, substring-eljük a kulcshoz
+        const dateStr = inv.Month || inv.date;
+        const key = dateStr.substring(0, keyLen);
         if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
         dataMap[key].cost += parseFloat(inv.Amount);
       });
@@ -195,10 +194,11 @@ function App() {
     }
   };
   const isInvoiceOnly = (t: string) => ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(t);
+  
   const combinedList = [
-    ...(filter === 'Összes' ? [] : records.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter' }))),
-    ...invoices.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, FormattedDate: i.Month }))
-  ].sort((a, b) => new Date(b.FormattedDate).getTime() - new Date(a.FormattedDate).getTime());
+    ...(filter === 'Összes' ? [] : records.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', displayDate: r.FormattedDate }))),
+    ...invoices.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, displayDate: i.Month }))
+  ].sort((a, b) => new Date(b.displayDate).getTime() - new Date(a.displayDate).getTime());
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -249,7 +249,7 @@ function App() {
                     <option value="Áram">⚡ Áram</option><option value="Víz">💧 Víz</option><option value="Gáz">🔥 Gáz</option>
                     {recordMode === 'invoice' && (<><option value="Üzemanyag">⛽ Üzemanyag</option><option value="Internet">🌐 Internet</option><option value="Szemétszállítás">🗑️ Szemét</option></>)}
                   </select>
-                  {recordMode === 'meter' ? (<input type="date" value={date} onChange={(e) => setDate(e.target.value)} />) : (<input type="month" value={invoiceMonth} onChange={(e) => setInvoiceMonth(e.target.value)} />)}
+                  <input type="date" value={recordMode === 'meter' ? meterDate : invoiceDate} onChange={(e) => recordMode === 'meter' ? setMeterDate(e.target.value) : setInvoiceDate(e.target.value)} />
                   <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték / Összeg" />
                 </div>
                 <button className="btn-primary" onClick={handleSave}>Mentés</button>
@@ -310,7 +310,7 @@ function App() {
                 {combinedList.length === 0 ? <p className="no-data-msg">Nincs rögzített adat.</p> : combinedList.map((item: any, idx) => (
                   <div key={idx} className={`record-item ${item.Type} ${item.lType}`}>
                     <div className="record-info">
-                      <span>{item.lType === 'meter' ? '📟 Állás' : '💰 Számla'} - {item.FormattedDate} ({item.Type})</span>
+                      <span>{item.lType === 'meter' ? '📟 Állás' : '💰 Számla'} - {item.displayDate} ({item.Type})</span>
                     </div>
                     <div className="record-value-container">
                       <span className="record-value">{parseFloat(item.Value).toLocaleString()} {item.lType === 'meter' ? (item.Type === 'Áram' ? 'kWh' : 'm³') : 'Ft'}</span>
