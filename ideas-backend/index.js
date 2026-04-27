@@ -253,5 +253,22 @@ app.post('/api/invoices', verifyUser, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Hiba' }); }
 });
 
+// Eszköz adatainak módosítása
+app.put('/api/assets/:id', verifyUser, async (req, res) => {
+  const { friendlyName, category, city, street, plateNumber, area } = req.body;
+  try {
+    await pool.query(
+      `UPDATE assets 
+       SET FriendlyName = ?, Category = ?, City = ?, Street = ?, PlateNumber = ?, Area = ? 
+       WHERE Id = ? AND UserId = ?`,
+      [friendlyName, category, city || null, street || null, plateNumber || null, area || null, req.params.id, req.userId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Nem sikerült a módosítás' });
+  }
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Szerver fut: ${PORT}`));
