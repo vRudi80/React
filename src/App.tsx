@@ -36,7 +36,10 @@ function App() {
   });
 
   const [filter, setFilter] = useState('Áram');
+  const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('usage'); 
+
+  // --- SEGÉDFÜGGVÉNYEK ---
 
   const forceLogout = () => {
     googleLogout();
@@ -45,6 +48,13 @@ function App() {
     setInvoices([]);
     setAssets([]);
     localStorage.removeItem('userToken');
+  };
+
+  const getAllowedTypes = (assetId: string) => {
+    if (!assetId || assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
+    const asset = assets.find((a: any) => a.Id == assetId);
+    if (!asset) return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
+    return asset.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'] : ['Üzemanyag'];
   };
 
   const fetchAll = async (token: string, targetId?: string) => {
@@ -85,26 +95,12 @@ function App() {
     }
   }, []);
 
-  const getAllowedTypes = (assetId: string) => {
-    if (assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
-    const asset = assets.find((a: any) => a.Id == assetId);
-    if (!asset) return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
-    return asset.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'] : ['Üzemanyag'];
-  };
-
   useEffect(() => {
     const allowed = getAllowedTypes(selectedAssetId);
     if (allowed.length > 0 && !allowed.includes(filter) && filter !== 'Összes') {
       setFilter(allowed[0]);
     }
-  }, [selectedAssetId, assets]);
-
-  useEffect(() => {
-    const allowed = getAllowedTypes(targetAssetId);
-    if (allowed.length > 0 && !allowed.includes(type)) {
-      setType(allowed[0]);
-    }
-  }, [targetAssetId, assets]);
+  }, [selectedAssetId, assets.length]);
 
   const handleLoginSuccess = async (res: any) => {
     const token = res.credential;
@@ -175,24 +171,28 @@ function App() {
     if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
   };
 
+  // --- GRAFIKON ÉS LISTA LOGIKA ---
+
+  const fRecords = records.filter((r: any) => selectedAssetId === 'all' || r.AssetId == selectedAssetId);
+  const fInvoices = invoices.filter((i: any) => selectedAssetId === 'all' || i.AssetId == selectedAssetId);
+
   const getChartData = () => {
+    const keyLen = viewMode === 'monthly' ? 7 : 4;
     const dataMap: { [key: string]: { usage: number, cost: number } } = {};
-    const fRecords = records.filter((r: any) => selectedAssetId === 'all' || r.AssetId == selectedAssetId);
-    const fInvoices = invoices.filter((i: any) => selectedAssetId === 'all' || i.AssetId == selectedAssetId);
     if (displayMode === 'usage') {
       const filtered = fRecords.filter((r: any) => r.Type === filter).sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
       for (let i = 1; i < filtered.length; i++) {
         const curV = parseFloat(filtered[i].Value);
         const preV = parseFloat(filtered[i-1].Value);
         if (curV >= preV) {
-          const key = filtered[i].FormattedDate.substring(0, 7);
+          const key = filtered[i].FormattedDate.substring(0, keyLen);
           if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
           dataMap[key].usage += (curV - preV);
         }
       }
     } else {
       fInvoices.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
-        const key = String(inv.Month || "").substring(0, 7);
+        const key = String(inv.Month || "").substring(0, keyLen);
         if (key && key !== "null") {
           if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
           dataMap[key].cost += parseFloat(inv.Amount || 0);
@@ -221,11 +221,9 @@ function App() {
     }
   };
 
-  const fRec = records.filter((r: any) => selectedAssetId === 'all' || r.AssetId == selectedAssetId);
-  const fInv = invoices.filter((i: any) => selectedAssetId === 'all' || i.AssetId == selectedAssetId);
   const combinedList = [
-    ...(filter === 'Összes' ? [] : fRec.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
-    ...fInv.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
+    ...(filter === 'Összes' ? [] : fRecords.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
+    ...fInvoices.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
   ].sort((a, b) => new Date(b.d).getTime() - new Date(a.d).getTime());
 
   const currentAssetView = assets.find(a => a.Id == selectedAssetId);
@@ -253,28 +251,22 @@ function App() {
                 <option value="car">🚗 Jármű</option>
               </select>
               <input placeholder="Név (pl. Otthon)" value={newAsset.friendlyName} onChange={(e) => setNewAsset({...newAsset, friendlyName: e.target.value})} />
-              
               {newAsset.category === 'property' ? (
                 <>
                   <input placeholder="Település" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} />
-                  <input placeholder="Cím (utca, házszám)" value={newAsset.street} onChange={(e) => setNewAsset({...newAsset, street: e.target.value})} />
+                  <input placeholder="Cím" value={newAsset.street} onChange={(e) => setNewAsset({...newAsset, street: e.target.value})} />
                   <input placeholder="m²" type="number" value={newAsset.area} onChange={(e) => setNewAsset({...newAsset, area: e.target.value})} />
                 </>
               ) : (
                 <>
                   <input placeholder="Rendszám" value={newAsset.plateNumber} onChange={(e) => setNewAsset({...newAsset, plateNumber: e.target.value})} />
                   <select value={newAsset.fuelType} onChange={(e) => setNewAsset({...newAsset, fuelType: e.target.value})}>
-                    <option value="Benzin">Benzin</option>
-                    <option value="Dízel">Dízel</option>
-                    <option value="Elektromos">Elektromos</option>
-                    <option value="LPG">LPG</option>
+                    <option value="Benzin">Benzin</option><option value="Dízel">Dízel</option><option value="Elektromos">Elektromos</option>
                   </select>
                 </>
               )}
               <div className="asset-form-buttons">
-                <button className="btn-primary" onClick={handleAssetSave}>
-                  {editingAssetId ? "Módosítás mentése" : "Eszköz mentése"}
-                </button>
+                <button className="btn-primary" onClick={handleAssetSave}>{editingAssetId ? "Módosítás" : "Mentés"}</button>
                 {editingAssetId && <button className="btn-secondary" onClick={() => { setEditingAssetId(null); setNewAsset({category: 'property', friendlyName: '', city: '', street: '', houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: ''}); }}>Mégse</button>}
               </div>
             </div>
@@ -283,12 +275,7 @@ function App() {
                 <div key={a.Id} className="asset-item">
                   <div className="asset-item-info">
                     <span className="asset-main-name">{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span>
-                    <span className="asset-sub-detail">
-                      {a.Category === 'property' 
-                        ? `${a.City || ''} ${a.Street || ''} ${a.Area ? `(${a.Area} m²)` : ''}`
-                        : `${a.PlateNumber || ''} ${a.FuelType ? `• ${a.FuelType}` : ''}`
-                      }
-                    </span>
+                    <span className="asset-sub-detail">{a.Category === 'car' ? a.PlateNumber : a.City}</span>
                   </div>
                   <button className="btn-edit-small" onClick={() => startEditing(a)}>✏️</button>
                 </div>
@@ -350,6 +337,11 @@ function App() {
               <div className="mode-toggle">
                 <button className={displayMode === 'usage' ? 'active' : ''} disabled={['Üzemanyag', 'Internet', 'Szemétszállítás', 'Összes'].includes(filter)} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
                 <button className={displayMode === 'cost' ? 'active' : ''} onClick={() => setDisplayMode('cost')}>Költség</button>
+              </div>
+              {/* VISSZAKERÜLT A HAVI/ÉVES VÁLASZTÓ */}
+              <div className="view-toggle">
+                <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
+                <button className={viewMode === 'annual' ? 'active' : ''} onClick={() => setViewMode('annual')}>Éves</button>
               </div>
             </div>
 
