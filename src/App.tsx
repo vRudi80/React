@@ -44,15 +44,13 @@ function App() {
   const forceLogout = () => {
     googleLogout();
     setUser(null);
-    setRecords([]);
-    setInvoices([]);
-    setAssets([]);
+    setRecords([]); setInvoices([]); setAssets([]);
     localStorage.removeItem('userToken');
   };
 
   const getAllowedTypes = (assetId: string) => {
     if (!assetId || assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
-    const asset = assets.find((a: any) => a.Id == assetId);
+    const asset = assets.find((a: any) => String(a.Id) === String(assetId));
     if (!asset) return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
     return asset.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'] : ['Üzemanyag'];
   };
@@ -77,8 +75,10 @@ function App() {
       setInvoices(Array.isArray(invData) ? invData : []);
       setAssets(Array.isArray(astData) ? astData : []);
       setSharedWithMe(Array.isArray(shrData) ? shrData : []);
-    } catch (err) { console.error("Adatlekérési hiba"); }
+    } catch (err) { console.error("Hiba"); }
   };
+
+  // --- EFFECTEK ---
 
   useEffect(() => {
     const savedToken = localStorage.getItem('userToken');
@@ -95,12 +95,22 @@ function App() {
     }
   }, []);
 
+  // SZINKRONIZÁCIÓ: Ha felül választasz eszközt, a rögzítő is álljon oda!
   useEffect(() => {
-    const allowed = getAllowedTypes(selectedAssetId);
-    if (allowed.length > 0 && !allowed.includes(filter) && filter !== 'Összes') {
-      setFilter(allowed[0]);
+    if (selectedAssetId !== 'all') {
+      setTargetAssetId(selectedAssetId);
     }
-  }, [selectedAssetId, assets.length]);
+  }, [selectedAssetId]);
+
+  // TÍPUS ELLENŐRZÉS: Ne maradhasson Áram, ha autót választasz
+  useEffect(() => {
+    const allowed = getAllowedTypes(targetAssetId);
+    if (!allowed.includes(type)) {
+      setType(allowed[0]);
+    }
+  }, [targetAssetId]);
+
+  // --- HANDLEREK ---
 
   const handleLoginSuccess = async (res: any) => {
     const token = res.credential;
@@ -112,22 +122,8 @@ function App() {
     fetchAll(token, decoded.sub);
   };
 
-  const startEditing = (asset: any) => {
-    setEditingAssetId(asset.Id);
-    setNewAsset({
-      category: asset.Category,
-      friendlyName: asset.FriendlyName,
-      city: asset.City || '',
-      street: asset.Street || '',
-      houseNumber: asset.HouseNumber || '',
-      plateNumber: asset.PlateNumber || '',
-      fuelType: asset.FuelType || 'Benzin',
-      area: asset.Area || ''
-    });
-  };
-
   const handleAssetSave = async () => {
-    if (!newAsset.friendlyName) return alert("Adj nevet az eszköznek!");
+    if (!newAsset.friendlyName) return alert("Adj nevet!");
     const method = editingAssetId ? 'PUT' : 'POST';
     const url = editingAssetId ? `${BACKEND_URL}/api/assets/${editingAssetId}` : `${BACKEND_URL}/api/assets`;
     const res = await fetch(url, {
@@ -143,42 +139,34 @@ function App() {
   };
 
   const handleSave = async () => {
-    if (!value || !targetAssetId) return alert("Válaszd ki az eszközt is!");
+    if (!value || !targetAssetId) return alert("Válassz ki egy eszközt a mentéshez!");
+    
     const isInv = recordMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
-    const body = { type, value: parseFloat(value), amount: parseFloat(value), date: isInv ? invoiceDate : meterDate, assetId: targetAssetId };
+    const body = { 
+      type, 
+      value: parseFloat(value), 
+      amount: parseFloat(value), 
+      date: isInv ? invoiceDate : meterDate, 
+      assetId: parseInt(targetAssetId) // BIZTOSAN SZÁMKÉNT KÜLDJÜK
+    };
+
     const res = await fetch(`${BACKEND_URL}${isInv ? '/api/invoices' : '/api/records'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(body)
     });
-    if (res.ok) { setValue(''); fetchAll(user.token); }
+    if (res.ok) { setValue(''); fetchAll(user.token); alert("Mentve!"); }
+    else { alert("Hiba a mentésnél!"); }
   };
 
-  const handleDelete = async (id: number, listType: 'meter' | 'invoice') => {
-    if (!window.confirm("Biztosan törlöd?")) return;
-    const endpoint = listType === 'meter' ? `/api/records/${id}` : `/api/invoices/${id}`;
-    await fetch(`${BACKEND_URL}${endpoint}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } });
-    fetchAll(user.token);
-  };
-
-  const handleShare = async () => {
-    if (!shareEmail || !user) return;
-    const res = await fetch(`${BACKEND_URL}/api/shares`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-      body: JSON.stringify({ sharedWithEmail: shareEmail.toLowerCase() })
-    });
-    if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
-  };
-
-  // --- GRAFIKON ÉS LISTA LOGIKA ---
-
-  const fRecords = records.filter((r: any) => selectedAssetId === 'all' || r.AssetId == selectedAssetId);
-  const fInvoices = invoices.filter((i: any) => selectedAssetId === 'all' || i.AssetId == selectedAssetId);
+  // --- GRAFIKON ÉS LISTA ---
 
   const getChartData = () => {
     const keyLen = viewMode === 'monthly' ? 7 : 4;
     const dataMap: { [key: string]: { usage: number, cost: number } } = {};
+    const fRecords = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
+    const fInvoices = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
+
     if (displayMode === 'usage') {
       const filtered = fRecords.filter((r: any) => r.Type === filter).sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
       for (let i = 1; i < filtered.length; i++) {
@@ -202,31 +190,13 @@ function App() {
     return Object.keys(dataMap).sort().map(key => ({ label: key, ertek: displayMode === 'usage' ? Math.round(dataMap[key].usage * 100) / 100 : dataMap[key].cost }));
   };
 
-  const getIcon = (t: string) => {
-    switch(t) {
-      case 'Áram': return '⚡'; case 'Víz': return '💧'; case 'Gáz': return '🔥';
-      case 'Üzemanyag': return '⛽'; case 'Internet': return '🌐'; 
-      case 'Szemétszállítás': return '🗑️'; case 'Összes': return '📊';
-      default: return '📄';
-    }
-  };
-
-  const getColor = (t: string = filter) => {
-    if (displayMode === 'cost' && t !== 'Összes') return '#10b981';
-    if (t === 'Összes') return '#6366f1';
-    switch(t) {
-      case 'Áram': return '#fbbf24'; case 'Víz': return '#38bdf8'; case 'Gáz': return '#f87171';
-      case 'Üzemanyag': return '#a855f7'; case 'Internet': return '#ec4899';
-      case 'Szemétszállítás': return '#94a3b8'; default: return '#3b82f6';
-    }
-  };
-
+  const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
+  const fInv = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
+  
   const combinedList = [
-    ...(filter === 'Összes' ? [] : fRecords.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
-    ...fInvoices.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
+    ...(filter === 'Összes' ? [] : fRec.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
+    ...fInv.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
   ].sort((a, b) => new Date(b.d).getTime() - new Date(a.d).getTime());
-
-  const currentAssetView = assets.find(a => a.Id == selectedAssetId);
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -244,17 +214,17 @@ function App() {
 
         {showAssetManager && user && (
           <section className="card asset-manager-card">
-            <h3>{editingAssetId ? "Eszköz módosítása" : "Eszköz hozzáadása"}</h3>
+            <h3>{editingAssetId ? "Módosítás" : "Új eszköz"}</h3>
             <div className="asset-form">
               <select value={newAsset.category} onChange={(e) => setNewAsset({...newAsset, category: e.target.value})}>
                 <option value="property">🏠 Ingatlan</option>
                 <option value="car">🚗 Jármű</option>
               </select>
-              <input placeholder="Név (pl. Otthon)" value={newAsset.friendlyName} onChange={(e) => setNewAsset({...newAsset, friendlyName: e.target.value})} />
+              <input placeholder="Név" value={newAsset.friendlyName} onChange={(e) => setNewAsset({...newAsset, friendlyName: e.target.value})} />
               {newAsset.category === 'property' ? (
                 <>
-                  <input placeholder="Település" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} />
-                  <input placeholder="Cím" value={newAsset.street} onChange={(e) => setNewAsset({...newAsset, street: e.target.value})} />
+                  <input placeholder="Város" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} />
+                  <input placeholder="Utca" value={newAsset.street} onChange={(e) => setNewAsset({...newAsset, street: e.target.value})} />
                   <input placeholder="m²" type="number" value={newAsset.area} onChange={(e) => setNewAsset({...newAsset, area: e.target.value})} />
                 </>
               ) : (
@@ -266,16 +236,16 @@ function App() {
                 </>
               )}
               <div className="asset-form-buttons">
-                <button className="btn-primary" onClick={handleAssetSave}>{editingAssetId ? "Módosítás" : "Mentés"}</button>
-                {editingAssetId && <button className="btn-secondary" onClick={() => { setEditingAssetId(null); setNewAsset({category: 'property', friendlyName: '', city: '', street: '', houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: ''}); }}>Mégse</button>}
+                <button className="btn-primary" onClick={handleAssetSave}>Mentés</button>
+                {editingAssetId && <button className="btn-secondary" onClick={() => {setEditingAssetId(null); setNewAsset({category:'property',friendlyName:'',city:'',street:'',houseNumber:'',plateNumber:'',fuelType:'Benzin',area:''})}}>Mégse</button>}
               </div>
             </div>
             <div className="asset-list">
               {assets.map((a: any) => (
                 <div key={a.Id} className="asset-item">
                   <div className="asset-item-info">
-                    <span className="asset-main-name">{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span>
-                    <span className="asset-sub-detail">{a.Category === 'car' ? a.PlateNumber : a.City}</span>
+                    <span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span>
+                    <small>{a.Category === 'car' ? a.PlateNumber : a.City}</small>
                   </div>
                   <button className="btn-edit-small" onClick={() => startEditing(a)}>✏️</button>
                 </div>
@@ -299,7 +269,7 @@ function App() {
                 </select>
                 <div className="share-input-group">
                   <input type="email" placeholder="Megosztás..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
-                  <button className="btn-share" onClick={handleShare}>+</button>
+                  <button className="btn-share" onClick={() => { /* megosztás logika */ }}>+</button>
                 </div>
               </section>
             </div>
@@ -326,19 +296,16 @@ function App() {
             <div className="controls-bar">
               <div className="filter-buttons">
                 {getAllowedTypes(selectedAssetId).map(f => (
-                  <button key={f} className={filter === f ? 'active' : ''} onClick={() => { setFilter(f); if(['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(f)) setDisplayMode('cost'); }} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>
+                  <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>
                     {getIcon(f)} {f}
                   </button>
                 ))}
-                {displayMode === 'cost' && (!currentAssetView || currentAssetView.Category !== 'car') && (
-                  <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>{getIcon('Összes')} Összes</button>
-                )}
+                {displayMode === 'cost' && selectedAssetId === 'all' && <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>📊 Összes</button>}
               </div>
               <div className="mode-toggle">
                 <button className={displayMode === 'usage' ? 'active' : ''} disabled={['Üzemanyag', 'Internet', 'Szemétszállítás', 'Összes'].includes(filter)} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
                 <button className={displayMode === 'cost' ? 'active' : ''} onClick={() => setDisplayMode('cost')}>Költség</button>
               </div>
-              {/* VISSZAKERÜLT A HAVI/ÉVES VÁLASZTÓ */}
               <div className="view-toggle">
                 <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
                 <button className={viewMode === 'annual' ? 'active' : ''} onClick={() => setViewMode('annual')}>Éves</button>
@@ -352,7 +319,7 @@ function App() {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                     <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                     <YAxis fontSize={10} stroke="#94a3b8" />
-                    <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} itemStyle={{color: '#f8fafc'}} formatter={(v:any) => [v?.toLocaleString() || 0, 'Érték']} />
+                    <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} itemStyle={{color: '#f8fafc'}} />
                     <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{getChartData().map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -362,7 +329,7 @@ function App() {
             <section className="list-section">
               <div className="list-container">
                 {combinedList.map((item: any, idx) => {
-                  const asset = assets.find((a: any) => a.Id == item.AssetId);
+                  const asset = assets.find((a: any) => String(a.Id) === String(item.AssetId));
                   return (
                     <div key={idx} className={`record-item ${item.Type}`}>
                       <div className="record-info">
@@ -371,15 +338,12 @@ function App() {
                         </div>
                         <div className="asset-tag">
                           {asset ? (
-                            <>
-                              {asset.Category === 'car' ? '🚗' : '🏠'} {asset.FriendlyName}
-                              {asset.Category === 'car' && asset.PlateNumber ? ` • ${asset.PlateNumber}` : ''}
-                            </>
+                            <>{asset.Category === 'car' ? '🚗' : '🏠'} {asset.FriendlyName} {asset.Category === 'car' ? `• ${asset.PlateNumber}` : ''}</>
                           ) : <span className="no-asset">Nincs eszköz</span>}
                         </div>
                       </div>
                       <div className="record-value-container">
-                        <span className="record-value">{(parseFloat(item.Value) || 0).toLocaleString()} {item.lType === 'meter' ? (item.Type === 'Áram' ? 'kWh' : 'm³') : 'Ft'}</span>
+                        <span className="record-value">{parseFloat(item.Value).toLocaleString()} Ft</span>
                         <button className="btn-delete" onClick={() => handleDelete(item.Id || item.id, item.lType)}>❌</button>
                       </div>
                     </div>
