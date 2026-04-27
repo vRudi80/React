@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, 
-  CartesianGrid, Tooltip, ResponsiveContainer, Cell 
+  CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend 
 } from 'recharts';
 import { GoogleOAuthProvider, GoogleLogin, googleLogout } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
@@ -9,6 +9,9 @@ import './App.css';
 
 const BACKEND_URL = "https://react-ideas-backend.onrender.com";
 const GOOGLE_CLIENT_ID = "197361744572-ih728hq5jft3fqfd1esvktvrd8i97kcp.apps.googleusercontent.com";
+
+// Színpaletta az eszközök elkülönítéséhez a grafikonon
+const ASSET_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
 function App() {
   const [user, setUser] = useState<any>(null);
@@ -39,6 +42,8 @@ function App() {
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('usage'); 
 
+  // --- SEGÉDFÜGGVÉNYEK ---
+
   const forceLogout = () => {
     googleLogout();
     setUser(null);
@@ -64,7 +69,7 @@ function App() {
         fetch(`${BACKEND_URL}/api/assets?userId=${id}`, { headers }),
         fetch(`${BACKEND_URL}/api/shares/me`, { headers })
       ]);
-      if (recRes.status === 401 || invRes.status === 401) return forceLogout();
+      if (recRes.status === 401) return forceLogout();
       const recData = await recRes.json();
       const invData = await invRes.json();
       const astData = await assetRes.json();
@@ -91,28 +96,15 @@ function App() {
     }
   }, []);
 
-  // --- GRAFIKON AUTO-SZŰRÉS ---
   useEffect(() => {
-    if (selectedAssetId === 'all') return;
-    const asset = assets.find((a: any) => String(a.Id) === String(selectedAssetId));
-    if (asset && asset.Category === 'car') {
-      setFilter('Üzemanyag');
-      setDisplayMode('cost');
-    }
-    // Szinkronizáljuk a rögzítőt is
-    setTargetAssetId(selectedAssetId);
-  }, [selectedAssetId, assets]);
+    if (selectedAssetId !== 'all') setTargetAssetId(selectedAssetId);
+  }, [selectedAssetId]);
 
-  // --- RÖGZÍTŐ AUTO-SZABÁLYOK ---
   useEffect(() => {
     const asset = assets.find((a: any) => String(a.Id) === String(targetAssetId));
-    if (asset && asset.Category === 'car') {
-      setRecordMode('invoice');
-    }
+    if (asset?.Category === 'car') setRecordMode('invoice');
     const allowed = getAllowedTypes(targetAssetId);
-    if (!allowed.includes(type)) {
-      setType(allowed[0]);
-    }
+    if (!allowed.includes(type)) setType(allowed[0]);
   }, [targetAssetId, assets]);
 
   const handleLoginSuccess = async (res: any) => {
@@ -126,45 +118,20 @@ function App() {
   };
 
   const handleAssetSave = async () => {
-    if (!newAsset.friendlyName) return alert("Adj nevet!");
     const method = editingAssetId ? 'PUT' : 'POST';
     const url = editingAssetId ? `${BACKEND_URL}/api/assets/${editingAssetId}` : `${BACKEND_URL}/api/assets`;
     const res = await fetch(url, {
-      method: method,
+      method,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(newAsset)
     });
-    if (res.ok) {
-      setEditingAssetId(null);
-      setNewAsset({ category: 'property', friendlyName: '', city: '', street: '', houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' });
-      fetchAll(user.token);
-    }
-  };
-
-  const startEditing = (asset: any) => {
-    setEditingAssetId(asset.Id);
-    setNewAsset({
-      category: asset.Category,
-      friendlyName: asset.FriendlyName,
-      city: asset.City || '',
-      street: asset.Street || '',
-      houseNumber: asset.HouseNumber || '',
-      plateNumber: asset.PlateNumber || '',
-      fuelType: asset.FuelType || 'Benzin',
-      area: asset.Area || ''
-    });
+    if (res.ok) { setEditingAssetId(null); fetchAll(user.token); }
   };
 
   const handleSave = async () => {
     if (!value || !targetAssetId) return alert("Válassz eszközt!");
     const isInv = recordMode === 'invoice' || ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(type);
-    const body = { 
-      type, 
-      value: parseFloat(value), 
-      amount: parseFloat(value), 
-      date: isInv ? invoiceDate : meterDate, 
-      assetId: parseInt(targetAssetId) 
-    };
+    const body = { type, value: parseFloat(value), amount: parseFloat(value), date: isInv ? invoiceDate : meterDate, assetId: parseInt(targetAssetId) };
     const res = await fetch(`${BACKEND_URL}${isInv ? '/api/invoices' : '/api/records'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
@@ -175,40 +142,55 @@ function App() {
 
   const handleDelete = async (id: number, listType: 'meter' | 'invoice') => {
     if (!window.confirm("Biztosan törlöd?")) return;
-    const endpoint = listType === 'meter' ? `/api/records/${id}` : `/api/invoices/${id}`;
-    await fetch(`${BACKEND_URL}${endpoint}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } });
+    await fetch(`${BACKEND_URL}/${listType === 'meter' ? 'api/records' : 'api/invoices'}/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } });
     fetchAll(user.token);
   };
 
+  const handleShare = async () => {
+    if (!shareEmail) return;
+    const res = await fetch(`${BACKEND_URL}/api/shares`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+      body: JSON.stringify({ sharedWithEmail: shareEmail.toLowerCase() })
+    });
+    if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
+  };
+
+  // --- GRAFIKON LOGIKA (Stacked Bar támogatással) ---
+
   const getChartData = () => {
     const keyLen = viewMode === 'monthly' ? 7 : 4;
-    const dataMap: { [key: string]: { usage: number, cost: number } } = {};
-    const fRecords = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
-    const fInvoices = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
+    const dataMap: { [key: string]: any } = {};
+    const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
+    const fInv = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
 
     if (displayMode === 'usage') {
-      const filtered = fRecords.filter((r: any) => r.Type === filter).sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
+      const filtered = fRec.filter((r: any) => r.Type === filter).sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
       for (let i = 1; i < filtered.length; i++) {
-        const curV = parseFloat(filtered[i].Value);
-        const preV = parseFloat(filtered[i-1].Value);
-        if (curV >= preV) {
+        const diff = parseFloat(filtered[i].Value) - parseFloat(filtered[i-1].Value);
+        if (diff >= 0) {
           const key = filtered[i].FormattedDate.substring(0, keyLen);
-          if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
-          dataMap[key].usage += (curV - preV);
+          const asset = assets.find(a => String(a.Id) === String(filtered[i].AssetId));
+          const label = asset ? asset.FriendlyName : 'Ismeretlen';
+          if (!dataMap[key]) dataMap[key] = { label: key };
+          dataMap[key][label] = (dataMap[key][label] || 0) + diff;
         }
       }
     } else {
-      fInvoices.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
+      fInv.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
         const key = String(inv.Month || "").substring(0, keyLen);
+        const asset = assets.find(a => String(a.Id) === String(inv.AssetId));
+        const label = asset ? asset.FriendlyName : 'Ismeretlen';
         if (key && key !== "null") {
-          if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
-          dataMap[key].cost += parseFloat(inv.Amount || 0);
+          if (!dataMap[key]) dataMap[key] = { label: key };
+          dataMap[key][label] = (dataMap[key][label] || 0) + parseFloat(inv.Amount || 0);
         }
       });
     }
-    return Object.keys(dataMap).sort().map(key => ({ label: key, ertek: displayMode === 'usage' ? Math.round(dataMap[key].usage * 100) / 100 : dataMap[key].cost }));
+    return Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
   };
 
+  const chartData = getChartData();
   const getIcon = (t: string) => {
     switch(t) {
       case 'Áram': return '⚡'; case 'Víz': return '💧'; case 'Gáz': return '🔥';
@@ -228,16 +210,12 @@ function App() {
     }
   };
 
-  const chartData = getChartData();
-  const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
-  const fInv = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
+  const fRecFinal = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
+  const fInvFinal = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
   const combinedList = [
-    ...(filter === 'Összes' ? [] : fRec.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
-    ...fInv.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
+    ...(filter === 'Összes' ? [] : fRecFinal.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
+    ...fInvFinal.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
   ].sort((a, b) => new Date(b.d).getTime() - new Date(a.d).getTime());
-
-  const currentAssetView = assets.find(a => String(a.Id) === String(selectedAssetId));
-  const currentTargetAsset = assets.find(a => String(a.Id) === String(targetAssetId));
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -258,37 +236,21 @@ function App() {
             <h3>{editingAssetId ? "Módosítás" : "Új eszköz"}</h3>
             <div className="asset-form">
               <select value={newAsset.category} onChange={(e) => setNewAsset({...newAsset, category: e.target.value})}>
-                <option value="property">🏠 Ingatlan</option>
-                <option value="car">🚗 Jármű</option>
+                <option value="property">🏠 Ingatlan</option><option value="car">🚗 Jármű</option>
               </select>
               <input placeholder="Név" value={newAsset.friendlyName} onChange={(e) => setNewAsset({...newAsset, friendlyName: e.target.value})} />
               {newAsset.category === 'property' ? (
-                <>
-                  <input placeholder="Város" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} />
-                  <input placeholder="Cím" value={newAsset.street} onChange={(e) => setNewAsset({...newAsset, street: e.target.value})} />
-                  <input placeholder="m²" type="number" value={newAsset.area} onChange={(e) => setNewAsset({...newAsset, area: e.target.value})} />
-                </>
+                <><input placeholder="Város" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} /><input placeholder="m²" type="number" value={newAsset.area} onChange={(e) => setNewAsset({...newAsset, area: e.target.value})} /></>
               ) : (
-                <>
-                  <input placeholder="Rendszám" value={newAsset.plateNumber} onChange={(e) => setNewAsset({...newAsset, plateNumber: e.target.value})} />
-                  <select value={newAsset.fuelType} onChange={(e) => setNewAsset({...newAsset, fuelType: e.target.value})}>
-                    <option value="Benzin">Benzin</option><option value="Dízel">Dízel</option><option value="Elektromos">Elektromos</option>
-                  </select>
-                </>
+                <><input placeholder="Rendszám" value={newAsset.plateNumber} onChange={(e) => setNewAsset({...newAsset, plateNumber: e.target.value})} /></>
               )}
-              <div className="asset-form-buttons">
-                <button className="btn-primary" onClick={handleAssetSave}>Mentés</button>
-                {editingAssetId && <button className="btn-secondary" onClick={() => {setEditingAssetId(null); setNewAsset({category:'property',friendlyName:'',city:'',street:'',houseNumber:'',plateNumber:'',fuelType:'Benzin',area:''})}}>Mégse</button>}
-              </div>
+              <button className="btn-primary" onClick={handleAssetSave}>Mentés</button>
             </div>
             <div className="asset-list">
               {assets.map((a: any) => (
                 <div key={a.Id} className="asset-item">
-                  <div className="asset-item-info">
-                    <span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span>
-                    <small>{a.Category === 'car' ? a.PlateNumber : a.City}</small>
-                  </div>
-                  <button className="btn-edit-small" onClick={() => startEditing(a)}>✏️</button>
+                  <span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span>
+                  <button onClick={() => { setEditingAssetId(a.Id); setNewAsset({...a, category: a.Category, friendlyName: a.FriendlyName}); }}>✏️</button>
                 </div>
               ))}
             </div>
@@ -296,10 +258,7 @@ function App() {
         )}
 
         {!user ? (
-          <section className="card login-card">
-            <h2>Bejelentkezés</h2>
-            <GoogleLogin onSuccess={handleLoginSuccess} />
-          </section>
+          <section className="card login-card"><h2>Bejelentkezés</h2><GoogleLogin onSuccess={handleLoginSuccess} /></section>
         ) : (
           <>
             <div className="top-row">
@@ -308,29 +267,21 @@ function App() {
                   <option value="all">🌐 Összesített nézet</option>
                   {assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</option>))}
                 </select>
+                <div className="share-input-group">
+                  <input type="email" placeholder="Email..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
+                  <button className="btn-share" onClick={handleShare}>+</button>
+                </div>
               </section>
             </div>
 
             <section className="card record-card">
               <div className="record-type-toggle">
-                <button 
-                  className={recordMode === 'meter' ? 'active' : ''} 
-                  onClick={() => setRecordMode('meter')}
-                  disabled={currentTargetAsset?.Category === 'car'}
-                  style={currentTargetAsset?.Category === 'car' ? { opacity: 0.3, cursor: 'not-allowed' } : {}}
-                >
-                  📟 Óraállás
-                </button>
+                <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')} disabled={assets.find(a => String(a.Id) === String(targetAssetId))?.Category === 'car'}>📟 Óraállás</button>
                 <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>💰 Számla</button>
               </div>
               <div className="input-row">
-                <select value={targetAssetId} onChange={(e) => setTargetAssetId(e.target.value)}>
-                  <option value="">Eszköz...</option>
-                  {assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.FriendlyName}</option>))}
-                </select>
-                <select value={type} onChange={(e) => setType(e.target.value)}>
-                  {getAllowedTypes(targetAssetId).map(t => <option key={t} value={t}>{getIcon(t)} {t}</option>)}
-                </select>
+                <select value={targetAssetId} onChange={(e) => setTargetAssetId(e.target.value)}><option value="">Eszköz...</option>{assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.FriendlyName}</option>))}</select>
+                <select value={type} onChange={(e) => setType(e.target.value)}>{getAllowedTypes(targetAssetId).map(t => <option key={t} value={t}>{getIcon(t)} {t}</option>)}</select>
                 <input type="date" value={recordMode === 'meter' ? meterDate : invoiceDate} onChange={(e) => recordMode === 'meter' ? setMeterDate(e.target.value) : setInvoiceDate(e.target.value)} />
                 <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték" />
               </div>
@@ -339,12 +290,7 @@ function App() {
 
             <div className="controls-bar">
               <div className="filter-buttons">
-                {getAllowedTypes(selectedAssetId).map(f => (
-                  <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>
-                    {getIcon(f)} {f}
-                  </button>
-                ))}
-                {displayMode === 'cost' && (!currentAssetView || currentAssetView.Category !== 'car') && <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>📊 Összes</button>}
+                {getAllowedTypes(selectedAssetId).map(f => <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>{getIcon(f)} {f}</button>)}
               </div>
               <div className="mode-toggle">
                 <button className={displayMode === 'usage' ? 'active' : ''} disabled={['Üzemanyag', 'Internet', 'Szemétszállítás', 'Összes'].includes(filter)} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
@@ -364,7 +310,16 @@ function App() {
                     <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                     <YAxis fontSize={10} stroke="#94a3b8" />
                     <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} itemStyle={{color: '#f8fafc'}} />
-                    <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{chartData.map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
+                    <Legend />
+                    {assets.map((asset, index) => (
+                      <Bar 
+                        key={asset.Id} 
+                        dataKey={asset.FriendlyName} 
+                        stackId="a" 
+                        fill={selectedAssetId === 'all' ? ASSET_COLORS[index % ASSET_COLORS.length] : getColor()} 
+                        radius={[0, 0, 0, 0]} 
+                      />
+                    ))}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -377,17 +332,11 @@ function App() {
                   return (
                     <div key={idx} className={`record-item ${item.Type}`}>
                       <div className="record-info">
-                        <div className="record-main-line">
-                          <span>{item.lType === 'meter' ? '📟' : '💰'} {item.d ? String(item.d).substring(0, 10) : ''} ({item.Type})</span>
-                        </div>
-                        <div className="asset-tag">
-                          {asset ? (
-                            <>{asset.Category === 'car' ? '🚗' : '🏠'} {asset.FriendlyName} {asset.Category === 'car' ? `• ${asset.PlateNumber}` : ''}</>
-                          ) : <span className="no-asset">Nincs eszköz</span>}
-                        </div>
+                        <div className="record-main-line"><span>{item.lType === 'meter' ? '📟' : '💰'} {item.d ? String(item.d).substring(0, 10) : ''} ({item.Type})</span></div>
+                        <div className="asset-tag">{asset ? <>{asset.Category === 'car' ? '🚗' : '🏠'} {asset.FriendlyName}</> : 'Nincs eszköz'}</div>
                       </div>
                       <div className="record-value-container">
-                        <span className="record-value">{(parseFloat(item.Value) || 0).toLocaleString()} {item.lType === 'meter' ? (item.Type === 'Áram' ? 'kWh' : 'm³') : 'Ft'}</span>
+                        <span className="record-value">{parseFloat(item.Value).toLocaleString()} Ft</span>
                         <button className="btn-delete" onClick={() => handleDelete(item.Id || item.id, item.lType)}>❌</button>
                       </div>
                     </div>
