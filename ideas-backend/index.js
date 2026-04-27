@@ -88,17 +88,17 @@ app.delete('/api/invoices/:id', verifyUser, async (req, res) => {
   }
 });
 
+// index.js - Számla mentése (Most már minden tétel új sor!)
 app.post('/api/invoices', verifyUser, async (req, res) => {
-  const { type, amount, month } = req.body;
+  const { type, amount, date } = req.body; // Most már 'date'-et várunk 'month' helyett
   try {
     await pool.query(
-      `INSERT INTO invoices (Type, Amount, Month, UserId) 
-       VALUES (?, ?, ?, ?) 
-       ON DUPLICATE KEY UPDATE Amount = VALUES(Amount)`,
-      [type, amount, month, req.userId]
+      'INSERT INTO invoices (Type, Amount, Month, UserId) VALUES (?, ?, ?, ?)',
+      [type, amount, date, req.userId]
     );
     res.status(201).json({ success: true });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Hiba a számla mentésekor' });
   }
 });
