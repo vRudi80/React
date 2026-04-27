@@ -79,14 +79,31 @@ function App() {
     }
   }, []);
 
-  const handleLoginSuccess = (credentialResponse: any) => {
-    const token = credentialResponse.credential;
-    const decoded: any = jwtDecode(token);
-    setUser({ ...decoded, token: token });
-    setViewingUserId(decoded.sub);
-    localStorage.setItem('userToken', token);
-    fetchAll(token, decoded.sub);
-  };
+  const handleLoginSuccess = async (credentialResponse: any) => {
+  const token = credentialResponse.credential;
+  const decoded: any = jwtDecode(token);
+  
+  // Állapotok frissítése
+  setUser({ ...decoded, token: token });
+  setViewingUserId(decoded.sub);
+  localStorage.setItem('userToken', token);
+
+  // BELÉPÉS NAPLÓZÁSA A SZERVEREN
+  try {
+    await fetch(`${BACKEND_URL}/api/login-sync`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+  } catch (err) {
+    console.error("Nem sikerült a belépés naplózása");
+  }
+
+  // Adatok betöltése
+  fetchAll(token, decoded.sub);
+};
 
   const handleSave = async () => {
     if (!user || !value) return alert("Adj meg egy értéket!");
