@@ -87,18 +87,33 @@ function App() {
     fetchAll(token, decoded.sub);
   };
 
-  const handleAssetSave = async () => {
-    if (!newAsset.friendlyName) return alert("Adj nevet az eszköznek!");
+const handleAssetSave = async () => {
+  if (!newAsset.friendlyName) return alert("Adj nevet az eszköznek!");
+  
+  try {
     const res = await fetch(`${BACKEND_URL}/api/assets`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${user.token}` 
+      },
       body: JSON.stringify(newAsset)
     });
+
+    const data = await res.json();
+
     if (res.ok) {
+      alert("Eszköz sikeresen mentve!");
       setShowAssetManager(false);
+      setNewAsset({ category: 'property', friendlyName: '', city: '', street: '', houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' });
       fetchAll(user.token);
+    } else {
+      alert("Szerver hiba: " + data.error);
     }
-  };
+  } catch (err) {
+    alert("Hálózati hiba: Nem sikerült elérni a szervert.");
+  }
+};
 
   const handleSave = async () => {
     if (!value || !targetAssetId) return alert("Töltsd ki az adatokat és válassz eszközt!");
