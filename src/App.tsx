@@ -18,19 +18,16 @@ function App() {
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [shareEmail, setShareEmail] = useState('');
   
-  // Rögzítési állapotok
   const [recordMode, setRecordMode] = useState<'meter' | 'invoice'>('meter');
   const [type, setType] = useState('Áram');
   const [value, setValue] = useState('');
   const [meterDate, setMeterDate] = useState(new Date().toISOString().split('T')[0]);
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Megjelenítési állapotok
   const [filter, setFilter] = useState('Áram');
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('usage'); 
 
-  // --- KÖZÖS KIJELENTKEZTETŐ FÜGGVÉNY ---
   const forceLogout = () => {
     googleLogout();
     setUser(null);
@@ -51,8 +48,7 @@ function App() {
       ]);
 
       if (recRes.status === 401 || invRes.status === 401 || shareRes.status === 401) {
-        forceLogout();
-        return;
+        forceLogout(); return;
       }
 
       const recData = recRes.ok ? await recRes.json() : [];
@@ -61,7 +57,7 @@ function App() {
       setRecords(Array.isArray(recData) ? recData : []);
       setInvoices(Array.isArray(invData) ? invData : []);
       setSharedWithMe(Array.isArray(shrData) ? shrData : []);
-    } catch (err) { console.error("Adatlekérési hiba"); }
+    } catch (err) { console.error("Hiba"); }
   };
 
   useEffect(() => {
@@ -69,9 +65,8 @@ function App() {
     if (savedToken) {
       try {
         const decoded: any = jwtDecode(savedToken);
-        if (decoded.exp * 1000 < Date.now()) {
-          forceLogout();
-        } else {
+        if (decoded.exp * 1000 < Date.now()) { forceLogout(); }
+        else {
           setUser({ ...decoded, token: savedToken });
           setViewingUserId(decoded.sub);
           fetchAll(savedToken, decoded.sub);
@@ -86,15 +81,12 @@ function App() {
     setUser({ ...decoded, token: token });
     setViewingUserId(decoded.sub);
     localStorage.setItem('userToken', token);
-
-    // Belépés naplózása
     try {
       await fetch(`${BACKEND_URL}/api/login-sync`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
       });
-    } catch (err) { console.error("Naplózási hiba"); }
-
+    } catch (err) { console.error("Login sync error"); }
     fetchAll(token, decoded.sub);
   };
 
@@ -111,9 +103,11 @@ function App() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
         body: JSON.stringify(body)
       });
+      
       if (res.status === 401) return forceLogout();
       if (res.ok) { setValue(''); fetchAll(user.token); }
-    } catch (err) { alert("Hiba a mentéskor!"); }
+      else { alert("Hiba a mentéskor!"); }
+    } catch (err) { alert("Szerver hiba"); }
   };
 
   const handleShare = async () => {
@@ -126,11 +120,11 @@ function App() {
       });
       if (res.status === 401) return forceLogout();
       if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
-    } catch (err) { alert("Hiba!"); }
+    } catch (err) { alert("Hiba"); }
   };
 
   const handleDelete = async (id: number, listType: 'meter' | 'invoice') => {
-    if (!window.confirm("Biztosan törlöd?") || !user) return;
+    if (!window.confirm("Biztosan törlöd?")) return;
     const endpoint = listType === 'meter' ? `/api/records/${id}` : `/api/invoices/${id}`;
     const res = await fetch(`${BACKEND_URL}${endpoint}`, { 
       method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } 
@@ -144,7 +138,6 @@ function App() {
     fetchAll(user.token, newId);
   };
 
-  // --- GRAFIKON LOGIKA ---
   const getChartData = () => {
     if (displayMode === 'cost' && viewMode === 'daily') return [];
     const keyLen = viewMode === 'monthly' ? 7 : 4;
@@ -164,9 +157,8 @@ function App() {
       }
     } else {
       invoices.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
-        // Mivel az inv.Month már DATE típus a DB-ben, substring-eljük a kulcshoz
-        const dateStr = inv.Month || inv.date;
-        const key = dateStr.substring(0, keyLen);
+        const d = inv.Month || "";
+        const key = d.substring(0, keyLen);
         if (!dataMap[key]) dataMap[key] = { usage: 0, cost: 0 };
         dataMap[key].cost += parseFloat(inv.Amount);
       });
@@ -174,7 +166,6 @@ function App() {
     return Object.keys(dataMap).sort().map(key => ({ label: key, ertek: displayMode === 'usage' ? Math.round(dataMap[key].usage * 100) / 100 : dataMap[key].cost }));
   };
 
-  const finalData = getChartData();
   const getUnit = () => displayMode === 'cost' ? 'Ft' : (filter === 'Áram' ? 'kWh' : 'm³');
   const getIcon = (t: string) => {
     switch(t) {
@@ -193,12 +184,13 @@ function App() {
       case 'Szemétszállítás': return '#94a3b8'; default: return '#3b82f6';
     }
   };
+
   const isInvoiceOnly = (t: string) => ['Üzemanyag', 'Internet', 'Szemétszállítás'].includes(t);
   
   const combinedList = [
-    ...(filter === 'Összes' ? [] : records.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', displayDate: r.FormattedDate }))),
-    ...invoices.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, displayDate: i.Month }))
-  ].sort((a, b) => new Date(b.displayDate).getTime() - new Date(a.displayDate).getTime());
+    ...(filter === 'Összes' ? [] : records.filter((r: any) => r.Type === filter).map((r: any) => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
+    ...invoices.filter((i: any) => filter === 'Összes' ? true : i.Type === filter).map((i: any) => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
+  ].sort((a, b) => new Date(b.d).getTime() - new Date(a.d).getTime());
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -283,7 +275,7 @@ function App() {
                 ) : (
                   <ResponsiveContainer>
                     {viewMode === 'daily' ? (
-                      <LineChart data={finalData}>
+                      <LineChart data={getChartData()}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                         <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                         <YAxis fontSize={10} stroke="#94a3b8" />
@@ -291,12 +283,12 @@ function App() {
                         <Line type="monotone" dataKey="ertek" stroke={getColor()} strokeWidth={3} dot={{fill: getColor()}} />
                       </LineChart>
                     ) : (
-                      <BarChart data={finalData}>
+                      <BarChart data={getChartData()}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                         <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                         <YAxis fontSize={10} stroke="#94a3b8" />
                         <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} labelStyle={{color: '#94a3b8', fontWeight: 'bold'}} itemStyle={{color: '#f8fafc'}} formatter={(v:any) => [`${v.toLocaleString()} ${getUnit()}`, displayMode==='usage'?'Fogyasztás':'Összeg']} />
-                        <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{finalData.map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
+                        <Bar dataKey="ertek" radius={[4, 4, 0, 0]}>{getChartData().map((e, i) => <Cell key={i} fill={getColor()} />)}</Bar>
                       </BarChart>
                     )}
                   </ResponsiveContainer>
@@ -310,7 +302,7 @@ function App() {
                 {combinedList.length === 0 ? <p className="no-data-msg">Nincs rögzített adat.</p> : combinedList.map((item: any, idx) => (
                   <div key={idx} className={`record-item ${item.Type} ${item.lType}`}>
                     <div className="record-info">
-                      <span>{item.lType === 'meter' ? '📟 Állás' : '💰 Számla'} - {item.displayDate} ({item.Type})</span>
+                      <span>{item.lType === 'meter' ? '📟 Állás' : '💰 Számla'} - {item.d ? item.d.substring(0, 10) : ''} ({item.Type})</span>
                     </div>
                     <div className="record-value-container">
                       <span className="record-value">{parseFloat(item.Value).toLocaleString()} {item.lType === 'meter' ? (item.Type === 'Áram' ? 'kWh' : 'm³') : 'Ft'}</span>
