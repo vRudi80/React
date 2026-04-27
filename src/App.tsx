@@ -161,7 +161,7 @@ function App() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(body)
     });
-    
+    if (res.ok) { setValue(''); fetchAll(user.token);  }
   };
 
   const handleDelete = async (id: number, listType: 'meter' | 'invoice') => {
