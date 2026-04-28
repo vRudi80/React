@@ -489,10 +489,45 @@ useEffect(() => {
               </div>
             </section>
           </>
-        ) : (
-          <section className="card login-card">
-    <GoogleLogin onSuccess={(res) => handleLoginSuccess(res.credential!)} />
-  </section>
+      ) : (
+          <div className="login-container">
+            <div className="login-content">
+              <h1 className="login-title">Üdvözöl a <span className="highlight">Rezsiapp 2.0</span></h1>
+              <p className="login-subtitle">A legkényelmesebb módja a háztartási kiadások, mérőóra állások és az autód költségeinek nyomon követésére.</p>
+
+              <div className="features-grid">
+                <div className="feature-item">
+                  <span className="feature-icon">📊</span>
+                  <div className="feature-text">
+                    <h3>Vizuális statisztikák</h3>
+                    <p>Kövesd a fogyasztásod havi vagy éves szinten, átlátható és letisztult grafikonokon.</p>
+                  </div>
+                </div>
+                <div className="feature-item">
+                  <span className="feature-icon">🏠</span>
+                  <div className="feature-text">
+                    <h3>Ingatlanok és Járművek</h3>
+                    <p>Kezeld külön a lakásod rezsijét és az autód tankolásait, mindezt egyetlen helyen.</p>
+                  </div>
+                </div>
+                <div className="feature-item">
+                  <span className="feature-icon">🤝</span>
+                  <div className="feature-text">
+                    <h3>Családi megosztás</h3>
+                    <p>Oszd meg az adataidat a pároddal vagy lakótársaddal biztonságosan, egyetlen kattintással.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="login-action-card">
+              <h2>Kezdd el most!</h2>
+              <p>A belépéshez nincs szükség külön regisztrációra, csak használd a meglévő Google fiókodat biztonságosan.</p>
+              <div className="google-btn-wrapper">
+                <GoogleLogin onSuccess={(res) => handleLoginSuccess(res.credential!)} />
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </GoogleOAuthProvider>
