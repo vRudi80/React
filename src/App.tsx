@@ -54,6 +54,31 @@ function App() {
     localStorage.removeItem('userToken');
   };
 
+  // --- EZT AZ ÚJ FÜGGVÉNYT ADD HOZZÁ IDE ---
+  const handleLoginSuccess = async (token: string) => {
+    try {
+      const decoded: any = jwtDecode(token);
+      setUser({ ...decoded, token });
+      setViewingUserId(decoded.sub);
+      localStorage.setItem('userToken', token);
+      
+      // 1. Alapadatok és a megosztások lekérése
+      fetchAll(token, decoded.sub);
+      fetchSharedAccounts(token);
+
+      // 2. Belépés naplózása az adatbázisba (users tábla)
+      await fetch(`${BACKEND_URL}/api/login-sync`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json' 
+        }
+      });
+    } catch (e) {
+      console.error("Hiba a bejelentkezés feldolgozásakor", e);
+      forceLogout();
+    }
+  };
   const fetchAll = async (token: string, targetId?: string) => {
     const id = targetId || viewingUserId || user?.sub;
     if (!id || !token) return;
@@ -83,16 +108,10 @@ function App() {
     } catch (e) { console.error("Hiba a megosztások lekérésekor", e); }
   };
 
-  useEffect(() => {
+useEffect(() => {
     const savedToken = localStorage.getItem('userToken');
     if (savedToken) {
-      try {
-        const decoded: any = jwtDecode(savedToken);
-        setUser({ ...decoded, token: savedToken });
-        setViewingUserId(decoded.sub);
-        fetchAll(savedToken, decoded.sub);
-        fetchSharedAccounts(savedToken);
-      } catch (e) { forceLogout(); }
+      handleLoginSuccess(savedToken);
     }
   }, []);
 
@@ -414,7 +433,9 @@ function App() {
             </section>
           </>
         ) : (
-          <section className="card login-card"><GoogleLogin onSuccess={(res) => { const token = res.credential!; const decoded: any = jwtDecode(token); setUser({...decoded, token}); localStorage.setItem('userToken', token); fetchAll(token, decoded.sub); }} /></section>
+          <section className="card login-card">
+    <GoogleLogin onSuccess={(res) => handleLoginSuccess(res.credential!)} />
+  </section>
         )}
       </div>
     </GoogleOAuthProvider>
