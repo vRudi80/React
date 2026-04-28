@@ -370,12 +370,14 @@ useEffect(() => {
                   {assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</option>))}
                 </select>
                 
-                {!isReadOnly && (
-                  <div className="share-input-group">
-                    <input type="email" placeholder="Kivel osztod meg?" value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
-                    <button className="btn-share" onClick={handleShare}>+</button>
-                  </div>
-            {/* ÚJ: Megosztottak listája */}
+                  {!isReadOnly && (
+                  <>
+                    <div className="share-input-group">
+                      <input type="email" placeholder="Kivel osztod meg?" value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
+                      <button className="btn-share" onClick={handleShare}>+</button>
+                    </div>
+                    
+                    {/* ÚJ: Megosztottak listája */}
                     {myShares.length > 0 && (
                       <div className="shared-list" style={{ marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px' }}>
                         <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '8px' }}>Hozzáféréssel rendelkeznek:</p>
@@ -390,6 +392,9 @@ useEffect(() => {
                             </button>
                           </div>
                         ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
 
