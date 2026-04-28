@@ -313,12 +313,28 @@ useEffect(() => {
             <div className="asset-list">
               {assets.map((a: any) => (
                 <div key={a.Id} className="asset-item">
-                  <div className="asset-item-info"><span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span><small>{a.Category === 'car' ? a.PlateNumber : a.City}</small></div>
+                  {/* 1. JAVÍTÁS: Csak a név jelenik meg, kivettük a <small> taget a város/rendszám miatt */}
+                  <div className="asset-item-info">
+                    <span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span>
+                  </div>
+                  
+                  {/* 2. JAVÍTÁS: Összekötöttük a backend nagybetűs mezőit a frontend kisbetűs mezőivel */}
                   <button className="btn-edit-small" onClick={() => { 
                     setEditingAssetId(a.Id);
-                    setNewAsset({ ...a, category: a.Category, friendlyName: a.FriendlyName });
+                    setNewAsset({ 
+                      category: a.Category || 'property', 
+                      friendlyName: a.FriendlyName || '',
+                      city: a.City || '',
+                      street: a.Street || '',
+                      houseNumber: a.HouseNumber || '',
+                      plateNumber: a.PlateNumber || '',
+                      fuelType: a.FuelType || 'Benzin',
+                      area: a.Area || ''
+                    });
                   }}>✏️</button>
                 </div>
+              ))}
+            </div>
               ))}
             </div>
           </section>
