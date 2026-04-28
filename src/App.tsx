@@ -42,6 +42,27 @@ function App() {
 
   const isReadOnly = viewingUserId !== null && viewingUserId !== user?.sub;
 
+  const [myShares, setMyShares] = useState<any[]>([]); // Akikkel ÉN osztottam meg
+
+  // Saját megosztások lekérése
+  const fetchMyShares = async (token: string) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/shares/owned`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setMyShares(await res.json());
+    } catch (e) { console.error("Hiba", e); }
+  };
+
+  // Megosztás törlése
+  const revokeShare = async (id: number) => {
+    if (!window.confirm("Biztosan visszavonod a hozzáférést?")) return;
+    const res = await fetch(`${BACKEND_URL}/api/shares/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${user.token}` }
+    });
+    if (res.ok) fetchMyShares(user.token);
+  };
   // --- FUNKCIÓK ---
 
   const forceLogout = () => {
@@ -65,6 +86,7 @@ function App() {
       // 1. Alapadatok és a megosztások lekérése
       fetchAll(token, decoded.sub);
       fetchSharedAccounts(token);
+      fetchMyShares(token);
 
       // 2. Belépés naplózása az adatbázisba (users tábla)
       await fetch(`${BACKEND_URL}/api/login-sync`, {
@@ -235,6 +257,7 @@ useEffect(() => {
     if (res.ok) {
       alert("Sikeres megosztás!");
       setShareEmail('');
+      fetchMyShares(user.token);
     } else {
       alert("Hiba történt a megosztás során.");
     }
@@ -352,6 +375,21 @@ useEffect(() => {
                     <input type="email" placeholder="Kivel osztod meg?" value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
                     <button className="btn-share" onClick={handleShare}>+</button>
                   </div>
+            {/* ÚJ: Megosztottak listája */}
+                    {myShares.length > 0 && (
+                      <div className="shared-list" style={{ marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px' }}>
+                        <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '8px' }}>Hozzáféréssel rendelkeznek:</p>
+                        {myShares.map(s => (
+                          <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px', fontSize: '0.85rem' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.shared_with_email}</span>
+                            <button 
+                              onClick={() => revokeShare(s.id)}
+                              style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}
+                            >
+                              Visszavonás
+                            </button>
+                          </div>
+                        ))}
                 )}
               </section>
 
