@@ -104,10 +104,15 @@ function App() {
 
   useEffect(() => {
     const asset = assets.find(a => String(a.Id) === String(targetAssetId));
-    if (asset?.Category === 'car') setRecordMode('invoice');
     const allowed = getAllowedTypes(targetAssetId);
+    
+    // Ha autót vagy "számla-típusú" rezsit választunk, kényszerítsük a számla módot
+    if (asset?.Category === 'car' || ['Internet', 'Szemétszállítás', 'Albérlet'].includes(type)) {
+      setRecordMode('invoice');
+    }
+    
     if (!allowed.includes(type)) setType(allowed[0]);
-  }, [targetAssetId, assets]);
+  }, [targetAssetId, type, assets]);
 
   // --- GRAFIKON ADATOK ---
 
@@ -162,42 +167,44 @@ function App() {
     }
   };
 
-  const startEditing = (asset: any) => {
-    setEditingAssetId(asset.Id);
-    setNewAsset({
-      category: asset.Category || 'property',
-      friendlyName: asset.FriendlyName || '',
-      city: asset.City || '',
-      street: asset.Street || '',
-      houseNumber: asset.HouseNumber || '',
-      plateNumber: asset.PlateNumber || '',
-      fuelType: asset.FuelType || 'Benzin',
-      area: asset.Area || ''
-    });
-  };
-
   const handleSave = async () => {
     if (!value || !targetAssetId) return alert("Válassz eszközt!");
-    const isFuel = type === 'Üzemanyag';
+    
+    // Meghatározzuk, hogy számláról van-e szó (Albérlet bekötve ide)
+    const isInvoiceType = ['Üzemanyag', 'Internet', 'Szemétszállítás', 'Albérlet'].includes(type);
+    
     const body = { 
-      type, value: parseFloat(value), amount: parseFloat(value), 
-      date: (recordMode === 'invoice' || isFuel) ? invoiceDate : meterDate, 
+      type, 
+      value: parseFloat(value), 
+      amount: parseFloat(value), 
+      date: (recordMode === 'invoice' || isInvoiceType) ? invoiceDate : meterDate, 
       assetId: parseInt(targetAssetId) 
     };
-    const res = await fetch(`${BACKEND_URL}${recordMode === 'invoice' || isFuel ? '/api/invoices' : '/api/records'}`, {
+
+    const res = await fetch(`${BACKEND_URL}${recordMode === 'invoice' || isInvoiceType ? '/api/invoices' : '/api/records'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(body)
     });
-    if (res.ok) { setValue(''); fetchAll(user.token); }
+    if (res.ok) { 
+      setValue(''); 
+      fetchAll(user.token); 
+      alert("Sikeres mentés!");
+    } else {
+      alert("Hiba történt a mentés során.");
+    }
   };
 
   const getIcon = (t: string) => {
     switch(t) {
-      case 'Áram': return '⚡'; case 'Víz': return '💧'; case 'Gáz': return '🔥';
-      case 'Üzemanyag': return '⛽'; case 'Internet': return '🌐'; 
-      case 'Szemétszállítás': return '🗑️'; case 'Összes': return '📊';
-      case 'Albérlet': return '🏘️'; case 'Összes': return '📊';
+      case 'Áram': return '⚡';
+      case 'Víz': return '💧';
+      case 'Gáz': return '🔥';
+      case 'Üzemanyag': return '⛽';
+      case 'Internet': return '🌐'; 
+      case 'Szemétszállítás': return '🗑️';
+      case 'Albérlet': return '🏠';
+      case 'Összes': return '📊';
       default: return '📄';
     }
   };
@@ -206,10 +213,14 @@ function App() {
     if (displayMode === 'cost' && t !== 'Összes') return '#10b981';
     if (t === 'Összes') return '#6366f1';
     switch(t) {
-      case 'Áram': return '#fbbf24'; case 'Víz': return '#38bdf8'; case 'Gáz': return '#f87171';
-      case 'Üzemanyag': return '#a855f7'; case 'Internet': return '#ec4899';
-      case 'Szemétszállítás': return '#94a3b8'; default: return '#3b82f6';
-      case 'Albérlet': return '#95a3b8'; default: return '#3b92f6';
+      case 'Áram': return '#fbbf24';
+      case 'Víz': return '#38bdf8';
+      case 'Gáz': return '#f87171';
+      case 'Üzemanyag': return '#a855f7';
+      case 'Internet': return '#ec4899';
+      case 'Szemétszállítás': return '#94a3b8';
+      case 'Albérlet': return '#f472b6'; // Új szín az albérletnek
+      default: return '#3b82f6';
     }
   };
 
@@ -251,14 +262,17 @@ function App() {
               )}
               <div className="asset-form-buttons">
                  <button className="btn-primary" onClick={handleAssetSave}>Mentés</button>
-                 {editingAssetId && <button className="btn-secondary" onClick={() => { setEditingAssetId(null); setNewAsset({category:'property',friendlyName:'',city:'',street:'',houseNumber:'',plateNumber:'',fuelType:'Benzin',area:''})}}>Mégse</button>}
+                 {editingAssetId && <button className="btn-secondary" onClick={() => { setEditingAssetId(null); }}>Mégse</button>}
               </div>
             </div>
             <div className="asset-list">
               {assets.map((a: any) => (
                 <div key={a.Id} className="asset-item">
                   <div className="asset-item-info"><span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span><small>{a.Category === 'car' ? a.PlateNumber : a.City}</small></div>
-                  <button className="btn-edit-small" onClick={() => startEditing(a)}>✏️</button>
+                  <button className="btn-edit-small" onClick={() => { 
+                    setEditingAssetId(a.Id);
+                    setNewAsset({ ...a, category: a.Category, friendlyName: a.FriendlyName });
+                  }}>✏️</button>
                 </div>
               ))}
             </div>
@@ -275,14 +289,14 @@ function App() {
                 </select>
                 <div className="share-input-group">
                   <input type="email" placeholder="Email..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
-                  <button className="btn-share" onClick={() => {/* megosztás hívás */}}>+</button>
+                  <button className="btn-share">+</button>
                 </div>
               </section>
             </div>
 
             <section className="card record-card">
               <div className="record-type-toggle">
-                <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')} disabled={assets.find(a => String(a.Id) === String(targetAssetId))?.Category === 'car'}>📟 Óraállás</button>
+                <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')} disabled={assets.find(a => String(a.Id) === String(targetAssetId))?.Category === 'car' || ['Internet', 'Szemétszállítás', 'Albérlet'].includes(type)}>📟 Óraállás</button>
                 <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>💰 Számla</button>
               </div>
               <div className="input-row">
