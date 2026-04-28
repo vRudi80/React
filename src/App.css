@@ -126,3 +126,49 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="month"]::-web
   border-radius: 8px;
   cursor: pointer;
 }
+.profile-selector {
+    background: #0f172a;
+    color: #60a5fa;
+    border: 1px solid #3b82f6;
+    border-radius: 15px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    outline: none;
+    cursor: pointer;
+}
+
+.read-only-banner {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    padding: 10px;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 1.5rem;
+    border: 1px dashed #3b82f6;
+}
+
+.top-controls {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    align-items: center;
+}
+
+.share-box {
+    display: flex;
+    gap: 5px;
+}
+
+.share-box input {
+    padding: 5px 10px;
+    font-size: 0.8rem;
+}
+
+.share-box button {
+    background: #10b981;
+    border: none;
+    color: white;
+    border-radius: 5px;
+    width: 30px;
+    cursor: pointer;
+}
