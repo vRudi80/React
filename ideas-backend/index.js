@@ -120,15 +120,17 @@ app.get('/api/shares/me', verifyUser, async (req, res) => {
 });
 
 // ÍRÁSI MŰVELETEK (Csak a tulajdonosnak!)
+// index.js fontos része:
 app.post('/api/records', verifyUser, async (req, res) => {
     const { type, value, date, assetId } = req.body;
+    // Szigorúan a bejelentkezett user ID-ját használjuk!
     try {
         await pool.query(
             'INSERT INTO utility_records (Type, Value, Date, UserId, AssetId) VALUES (?, ?, ?, ?, ?)',
-            [type, value, date, req.userId, assetId || null]
+            [type, value, date, req.userId, assetId]
         );
         res.status(201).json({ success: true });
-    } catch (err) { res.status(500).json({ error: 'Hiba' }); }
+    } catch (err) { res.status(500).send(err); }
 });
 
 app.post('/api/invoices', verifyUser, async (req, res) => {
