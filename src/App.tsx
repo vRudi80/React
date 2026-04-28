@@ -50,29 +50,31 @@ function App() {
   };
 
   const fetchAll = async (token: string, targetId?: string) => {
-    const id = targetId || viewingUserId || user?.sub;
-    if (!id || !token) return;
-    try {
-      const headers = { 'Authorization': `Bearer ${token}` };
-      const [recRes, invRes, assetRes, shareRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/api/records?userId=${id}`, { headers }),
-        fetch(`${BACKEND_URL}/api/invoices?userId=${id}`, { headers }),
-        fetch(`${BACKEND_URL}/api/assets?userId=${id}`, { headers }),
-        fetch(`${BACKEND_URL}/api/shares/me`, { headers })
-      ]);
-      if (recRes.status === 401) return forceLogout();
-      const recData = await recRes.json();
-      const invData = await invRes.json();
-      const astData = await assetRes.json();
-      const shrData = await shareRes.json();
-      setRecords(Array.isArray(recData) ? recData : []);
-      setInvoices(Array.isArray(invData) ? invData : []);
-      setAssets(Array.isArray(astData) ? astData : []);
-      setSharedWithMe(Array.isArray(shrData) ? shrData : []);
-    } catch (err) { console.error("Adatlekérési hiba"); }
-  };
-
-  useEffect(() => {
+  // Elsődlegesen a targetId, aztán a viewingUserId, végül a saját ID
+  const id = targetId || viewingUserId || user?.sub;
+  if (!id || !token) return;
+  
+  try {
+    const headers = { 'Authorization': `Bearer ${token}` };
+    // Fontos: a backendnek átadjuk a lekérdezett userId-t
+    const [recRes, invRes, assetRes] = await Promise.all([
+      fetch(`${BACKEND_URL}/api/records?userId=${id}`, { headers }),
+      fetch(`${BACKEND_URL}/api/invoices?userId=${id}`, { headers }),
+      fetch(`${BACKEND_URL}/api/assets?userId=${id}`, { headers })
+    ]);
+    
+    if (recRes.status === 401) return forceLogout();
+    const recData = await recRes.json();
+    const invData = await invRes.json();
+    const astData = await assetRes.json();
+    
+    setRecords(Array.isArray(recData) ? recData : []);
+    setInvoices(Array.isArray(invData) ? invData : []);
+    setAssets(Array.isArray(astData) ? astData : []);
+  } catch (err) { console.error("Adatlekérési hiba"); }
+};
+  
+useEffect(() => {
     const savedToken = localStorage.getItem('userToken');
     if (savedToken) {
       try {
@@ -153,9 +155,12 @@ function App() {
     });
     if (res.ok) { setEditingAssetId(null); setShowAssetManager(false); fetchAll(user.token); }
   };
+  
+const isReadOnly = viewingUserId !== user?.sub;
 
-  const handleSave = async () => {
-    if (!value || !targetAssetId) return alert("Válassz eszközt!");
+const handleSave = async () => {
+  if (isReadOnly) return alert("Nincs jogosultságod szerkeszteni ezt a fiókot!");
+  if (!value || !targetAssetId) return alert("Válassz eszközt!");
     const isInvoiceType = ['Üzemanyag', 'Internet', 'Szemétszállítás', 'Albérlet'].includes(type);
     const body = { type, value: parseFloat(value), amount: parseFloat(value), date: (recordMode === 'invoice' || isInvoiceType) ? invoiceDate : meterDate, assetId: parseInt(targetAssetId) };
     const res = await fetch(`${BACKEND_URL}${recordMode === 'invoice' || isInvoiceType ? '/api/invoices' : '/api/records'}`, {
@@ -273,8 +278,9 @@ function App() {
               </section>
             </div>
 
-            <section className="card record-card">
-              <div className="record-type-toggle">
+<section className={`card record-card ${isReadOnly ? 'read-only' : ''}`}>
+  {isReadOnly && <div className="overlay-msg">Megtekintő mód (csak olvasható)</div>}
+  <div className="record-type-toggle">
                 <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')} disabled={assets.find(a => String(a.Id) === String(targetAssetId))?.Category === 'car' || ['Internet', 'Szemétszállítás', 'Albérlet'].includes(type)}>📟 Óraállás</button>
                 <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>💰 Számla</button>
               </div>
@@ -284,8 +290,10 @@ function App() {
                 <input type="date" value={recordMode === 'meter' ? meterDate : invoiceDate} onChange={(e) => recordMode === 'meter' ? setMeterDate(e.target.value) : setInvoiceDate(e.target.value)} />
                 <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték / Ft" />
               </div>
-              <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
-            </section>
+<button className="btn-primary" onClick={handleSave} disabled={isReadOnly}>
+    {isReadOnly ? "Csak olvasható" : "Adat mentése"}
+  </button>
+</section>
 
             <div className="controls-bar">
               <div className="filter-buttons">
