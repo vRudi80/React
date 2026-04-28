@@ -222,7 +222,13 @@ useEffect(() => {
   };
 
   const handleSave = async () => {
-    if (!value || !targetAssetId) return alert("Válassz eszközt!");
+    // 1. Validáció: külön hibaüzenet az eszközre és az értékre
+    if (!targetAssetId || targetAssetId === 'all') {
+      return alert("Kérlek, válassz ki egy konkrét eszközt a mentéshez!");
+    }
+    if (!value) {
+      return alert("Kérlek, add meg az értéket!");
+    }
     
     const isInvoiceType = ['Üzemanyag', 'Internet', 'Szemétszállítás', 'Albérlet'].includes(type);
     
@@ -239,6 +245,7 @@ useEffect(() => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(body)
     });
+    
     if (res.ok) { 
       setValue(''); 
       fetchAll(user.token); 
@@ -427,7 +434,13 @@ useEffect(() => {
                   <input type="date" value={recordMode === 'meter' ? meterDate : invoiceDate} onChange={(e) => recordMode === 'meter' ? setMeterDate(e.target.value) : setInvoiceDate(e.target.value)} />
                   <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték / Ft" />
                 </div>
-                <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
+               <button 
+  className="btn-primary" 
+  onClick={handleSave} 
+  disabled={!targetAssetId || targetAssetId === 'all' || !value}
+>
+  Adat mentése
+</button>
               </section>
             )}
 
