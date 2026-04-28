@@ -252,6 +252,31 @@ app.put('/api/assets/:id', verifyUser, async (req, res) => {
     res.status(500).json({ error: 'Nem sikerült a módosítás' });
   }
 });
+// Megosztások listázása, amiket ÉN hoztam létre
+app.get('/api/shares/owned', verifyUser, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, shared_with_email FROM shares WHERE owner_id = ?',
+      [req.userId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Hiba a megosztások lekérésekor' });
+  }
+});
 
+// Megosztás visszavonása
+app.delete('/api/shares/:id', verifyUser, async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      'DELETE FROM shares WHERE id = ? AND owner_id = ?',
+      [req.params.id, req.userId]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Nem található' });
+    res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: 'Hiba a törléskor' });
+  }
+});
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Szerver fut: ${PORT}`));
