@@ -83,9 +83,9 @@ function App() {
   }, []);
 
   const getAllowedTypes = (assetId: string) => {
-    if (!assetId || assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'];
+    if (!assetId || assetId === 'all') return ['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás', 'Albérlet'];
     const asset = assets.find((a: any) => String(a.Id) === String(assetId));
-    return asset?.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás'] : ['Üzemanyag'];
+    return asset?.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás', 'Albérlet'] : ['Üzemanyag'];
   };
 
   useEffect(() => {
@@ -197,6 +197,7 @@ function App() {
       case 'Áram': return '⚡'; case 'Víz': return '💧'; case 'Gáz': return '🔥';
       case 'Üzemanyag': return '⛽'; case 'Internet': return '🌐'; 
       case 'Szemétszállítás': return '🗑️'; case 'Összes': return '📊';
+      case 'Albérlet': return '🏘️'; case 'Összes': return '📊';
       default: return '📄';
     }
   };
@@ -208,6 +209,7 @@ function App() {
       case 'Áram': return '#fbbf24'; case 'Víz': return '#38bdf8'; case 'Gáz': return '#f87171';
       case 'Üzemanyag': return '#a855f7'; case 'Internet': return '#ec4899';
       case 'Szemétszállítás': return '#94a3b8'; default: return '#3b82f6';
+      case 'Albérlet': return '#95a3b8'; default: return '#3b92f6';
     }
   };
 
@@ -294,13 +296,13 @@ function App() {
 
             <div className="controls-bar">
               <div className="filter-buttons">
-                {['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás'].map(f => (
+                {['Áram', 'Víz', 'Gáz', 'Üzemanyag', 'Internet', 'Szemétszállítás', 'Albérlet'].map(f => (
                   <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)} style={filter === f ? {backgroundColor: getColor(f), borderColor: getColor(f)} : {}}>{getIcon(f)} {f}</button>
                 ))}
                 {displayMode === 'cost' && <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>{getIcon('Összes')} Összes</button>}
               </div>
               <div className="mode-toggle">
-                <button className={displayMode === 'usage' ? 'active' : ''} disabled={['Üzemanyag', 'Internet', 'Szemétszállítás', 'Összes'].includes(filter)} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
+                <button className={displayMode === 'usage' ? 'active' : ''} disabled={['Üzemanyag', 'Internet', 'Szemétszállítás', 'Albérlet', 'Összes'].includes(filter)} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
                 <button className={displayMode === 'cost' ? 'active' : ''} onClick={() => setDisplayMode('cost')}>Költség</button>
               </div>
               <div className="view-toggle">
