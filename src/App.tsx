@@ -189,7 +189,7 @@ function App() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(body)
     });
-    if (res.ok) { setValue(''); fetchAll(user.token); alert("Mentve!"); }
+    if (res.ok) { setValue(''); fetchAll(user.token); }
   };
 
   const getIcon = (t: string) => {
