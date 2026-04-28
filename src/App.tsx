@@ -16,6 +16,7 @@ function App() {
   const [records, setRecords] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
+  const [sharedWithMe, setSharedWithMe] = useState<any[]>([]);
   
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string>('all');
@@ -44,9 +45,7 @@ function App() {
   const forceLogout = () => {
     googleLogout();
     setUser(null);
-    setRecords([]);
-    setInvoices([]);
-    setAssets([]);
+    setRecords([]); setInvoices([]); setAssets([]);
     localStorage.removeItem('userToken');
   };
 
@@ -55,18 +54,21 @@ function App() {
     if (!id || !token) return;
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
-      const [recRes, invRes, assetRes] = await Promise.all([
+      const [recRes, invRes, assetRes, shareRes] = await Promise.all([
         fetch(`${BACKEND_URL}/api/records?userId=${id}`, { headers }),
         fetch(`${BACKEND_URL}/api/invoices?userId=${id}`, { headers }),
-        fetch(`${BACKEND_URL}/api/assets?userId=${id}`, { headers })
+        fetch(`${BACKEND_URL}/api/assets?userId=${id}`, { headers }),
+        fetch(`${BACKEND_URL}/api/shares/me`, { headers })
       ]);
       if (recRes.status === 401) return forceLogout();
       const recData = await recRes.json();
       const invData = await invRes.json();
       const astData = await assetRes.json();
+      const shrData = await shareRes.json();
       setRecords(Array.isArray(recData) ? recData : []);
       setInvoices(Array.isArray(invData) ? invData : []);
       setAssets(Array.isArray(astData) ? astData : []);
+      setSharedWithMe(Array.isArray(shrData) ? shrData : []);
     } catch (err) { console.error("Adatlekérési hiba"); }
   };
 
@@ -88,34 +90,24 @@ function App() {
     return asset?.Category === 'property' ? ['Áram', 'Víz', 'Gáz', 'Internet', 'Szemétszállítás', 'Albérlet'] : ['Üzemanyag'];
   };
 
+  // --- AUTOMATIKUS SZINKRON ---
   useEffect(() => {
     if (selectedAssetId !== 'all') {
       setTargetAssetId(selectedAssetId);
       const asset = assets.find(a => String(a.Id) === String(selectedAssetId));
-      if (asset?.Category === 'car') {
-        setFilter('Üzemanyag');
-        setDisplayMode('cost');
-      }
-    } else {
-      setFilter('Összes');
-      setDisplayMode('cost');
-    }
+      if (asset?.Category === 'car') { setFilter('Üzemanyag'); setDisplayMode('cost'); }
+    } else { setFilter('Összes'); setDisplayMode('cost'); }
   }, [selectedAssetId, assets.length]);
 
   useEffect(() => {
     const asset = assets.find(a => String(a.Id) === String(targetAssetId));
+    const isInvoiceType = ['Üzemanyag', 'Internet', 'Szemétszállítás', 'Albérlet'].includes(type);
+    if (asset?.Category === 'car' || isInvoiceType) setRecordMode('invoice');
     const allowed = getAllowedTypes(targetAssetId);
-    
-    // Ha autót vagy "számla-típusú" rezsit választunk, kényszerítsük a számla módot
-    if (asset?.Category === 'car' || ['Internet', 'Szemétszállítás', 'Albérlet'].includes(type)) {
-      setRecordMode('invoice');
-    }
-    
     if (!allowed.includes(type)) setType(allowed[0]);
   }, [targetAssetId, type, assets]);
 
   // --- GRAFIKON ADATOK ---
-
   const chartData = useMemo(() => {
     const keyLen = viewMode === 'monthly' ? 7 : 4;
     const dataMap: { [key: string]: any } = {};
@@ -129,7 +121,7 @@ function App() {
         if (diff >= 0) {
           const key = filtered[i].FormattedDate.substring(0, keyLen);
           const asset = assets.find(a => String(a.Id) === String(filtered[i].AssetId));
-          const label = asset ? asset.FriendlyName : 'Egyéb';
+          const label = asset ? asset.FriendlyName : 'Saját';
           if (!dataMap[key]) dataMap[key] = { label: key };
           dataMap[key][label] = (dataMap[key][label] || 0) + diff;
         }
@@ -138,7 +130,7 @@ function App() {
       fInv.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
         const key = String(inv.Month || "").substring(0, keyLen);
         const asset = assets.find(a => String(a.Id) === String(inv.AssetId));
-        const label = asset ? asset.FriendlyName : 'Egyéb';
+        const label = asset ? asset.FriendlyName : 'Saját';
         if (key && key.length >= 4) {
           if (!dataMap[key]) dataMap[key] = { label: key };
           dataMap[key][label] = (dataMap[key][label] || 0) + parseFloat(inv.Amount || 0);
@@ -159,52 +151,38 @@ function App() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(newAsset)
     });
-    if (res.ok) {
-      setEditingAssetId(null);
-      setNewAsset({ category: 'property', friendlyName: '', city: '', street: '', houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' });
-      setShowAssetManager(false);
-      fetchAll(user.token);
-    }
+    if (res.ok) { setEditingAssetId(null); setShowAssetManager(false); fetchAll(user.token); }
   };
 
   const handleSave = async () => {
     if (!value || !targetAssetId) return alert("Válassz eszközt!");
-    
-    // Meghatározzuk, hogy számláról van-e szó (Albérlet bekötve ide)
     const isInvoiceType = ['Üzemanyag', 'Internet', 'Szemétszállítás', 'Albérlet'].includes(type);
-    
-    const body = { 
-      type, 
-      value: parseFloat(value), 
-      amount: parseFloat(value), 
-      date: (recordMode === 'invoice' || isInvoiceType) ? invoiceDate : meterDate, 
-      assetId: parseInt(targetAssetId) 
-    };
-
+    const body = { type, value: parseFloat(value), amount: parseFloat(value), date: (recordMode === 'invoice' || isInvoiceType) ? invoiceDate : meterDate, assetId: parseInt(targetAssetId) };
     const res = await fetch(`${BACKEND_URL}${recordMode === 'invoice' || isInvoiceType ? '/api/invoices' : '/api/records'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(body)
     });
-    if (res.ok) { 
-      setValue(''); 
-      fetchAll(user.token); 
-    } else {
-      alert("Hiba történt a mentés során.");
-    }
+    if (res.ok) { setValue(''); fetchAll(user.token); alert("Mentve!"); }
+  };
+
+  const handleShare = async () => {
+    if (!shareEmail) return alert("Adj meg egy email címet!");
+    const res = await fetch(`${BACKEND_URL}/api/shares`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+      body: JSON.stringify({ sharedWithEmail: shareEmail.toLowerCase().trim() })
+    });
+    if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); }
+    else { const data = await res.json(); alert("Hiba: " + data.error); }
   };
 
   const getIcon = (t: string) => {
     switch(t) {
-      case 'Áram': return '⚡';
-      case 'Víz': return '💧';
-      case 'Gáz': return '🔥';
-      case 'Üzemanyag': return '⛽';
-      case 'Internet': return '🌐'; 
-      case 'Szemétszállítás': return '🗑️';
-      case 'Albérlet': return '🏠';
-      case 'Összes': return '📊';
-      default: return '📄';
+      case 'Áram': return '⚡'; case 'Víz': return '💧'; case 'Gáz': return '🔥';
+      case 'Üzemanyag': return '⛽'; case 'Internet': return '🌐'; 
+      case 'Szemétszállítás': return '🗑️'; case 'Albérlet': return '🏘️';
+      case 'Összes': return '📊'; default: return '📄';
     }
   };
 
@@ -212,13 +190,9 @@ function App() {
     if (displayMode === 'cost' && t !== 'Összes') return '#10b981';
     if (t === 'Összes') return '#6366f1';
     switch(t) {
-      case 'Áram': return '#fbbf24';
-      case 'Víz': return '#38bdf8';
-      case 'Gáz': return '#f87171';
-      case 'Üzemanyag': return '#a855f7';
-      case 'Internet': return '#ec4899';
-      case 'Szemétszállítás': return '#94a3b8';
-      case 'Albérlet': return '#f472b6'; // Új szín az albérletnek
+      case 'Áram': return '#fbbf24'; case 'Víz': return '#38bdf8'; case 'Gáz': return '#f87171';
+      case 'Üzemanyag': return '#a855f7'; case 'Internet': return '#ec4899';
+      case 'Szemétszállítás': return '#94a3b8'; case 'Albérlet': return '#f472b6';
       default: return '#3b82f6';
     }
   };
@@ -268,10 +242,7 @@ function App() {
               {assets.map((a: any) => (
                 <div key={a.Id} className="asset-item">
                   <div className="asset-item-info"><span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span><small>{a.Category === 'car' ? a.PlateNumber : a.City}</small></div>
-                  <button className="btn-edit-small" onClick={() => { 
-                    setEditingAssetId(a.Id);
-                    setNewAsset({ ...a, category: a.Category, friendlyName: a.FriendlyName });
-                  }}>✏️</button>
+                  <button className="btn-edit-small" onClick={() => { setEditingAssetId(a.Id); setNewAsset({...a}); }}>✏️</button>
                 </div>
               ))}
             </div>
@@ -282,14 +253,23 @@ function App() {
           <>
             <div className="top-row">
               <section className="card share-card compact">
+                <div style={{marginBottom: '10px'}}>
+                  <label style={{fontSize: '0.7rem', color: 'var(--text-muted)'}}>Megtekintett fiók:</label>
+                  <select value={viewingUserId || ''} onChange={(e) => { setViewingUserId(e.target.value); setSelectedAssetId('all'); fetchAll(user.token, e.target.value); }}>
+                    <option value={user.sub}>Saját fiókom</option>
+                    {sharedWithMe.map((s: any) => <option key={s.owner_id} value={s.owner_id}>👥 {s.owner_email}</option>)}
+                  </select>
+                </div>
                 <select value={selectedAssetId} onChange={(e) => setSelectedAssetId(e.target.value)}>
                   <option value="all">🌐 Összesített nézet</option>
                   {assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</option>))}
                 </select>
-                <div className="share-input-group">
-                  <input type="email" placeholder="Email..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
-                  <button className="btn-share">+</button>
-                </div>
+                {viewingUserId === user.sub && (
+                  <div className="share-input-group">
+                    <input type="email" placeholder="Megosztás (email)..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
+                    <button className="btn-share" onClick={handleShare}>+</button>
+                  </div>
+                )}
               </section>
             </div>
 
