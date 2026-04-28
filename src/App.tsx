@@ -189,7 +189,6 @@ function App() {
     if (res.ok) { 
       setValue(''); 
       fetchAll(user.token); 
-      alert("Sikeres mentés!");
     } else {
       alert("Hiba történt a mentés során.");
     }
