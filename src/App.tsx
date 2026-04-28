@@ -202,6 +202,35 @@ useEffect(() => {
     return Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
   }, [records, invoices, assets, filter, displayMode, viewMode, selectedAssetId]);
 
+  // --- EGYEDI TOOLTIP A GRAFIKONHOZ ---
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      // Összeadjuk az aktuális oszlop (hónap/év) értékeit
+      const total = payload.reduce((sum: number, entry: any) => sum + (Number(entry.value) || 0), 0);
+      const unit = displayMode === 'cost' ? 'Ft' : '';
+
+      return (
+        <div style={{ backgroundColor: '#1e293b', padding: '12px', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>{label}</p>
+          
+          {/* Elemek listázása */}
+          {payload.map((entry: any, index: number) => (
+            <div key={index} style={{ display: 'flex', justifyContent: 'space-between', gap: '20px', fontSize: '0.85rem', marginBottom: '6px' }}>
+              <span style={{ color: entry.color }}>{entry.name}:</span>
+              <span style={{ fontWeight: 600 }}>{Number(entry.value).toLocaleString()} {unit}</span>
+            </div>
+          ))}
+          
+          {/* Végösszeg megjelenítése */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '20px', fontSize: '0.95rem', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #334155', fontWeight: 'bold', color: '#10b981' }}>
+            <span>Összesen:</span>
+            <span>{total.toLocaleString()} {unit}</span>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
   // --- HANDLEREK ---
 
   const handleAssetSave = async () => {
