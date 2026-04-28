@@ -498,7 +498,7 @@ useEffect(() => {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                       <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                       <YAxis fontSize={10} stroke="#94a3b8" />
-                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
+                     <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }} />
                       <Legend />
                       {(selectedAssetId === 'all' ? assets : assets.filter(a => String(a.Id) === String(selectedAssetId))).map((asset, idx) => (
                         <Bar key={asset.Id} dataKey={asset.FriendlyName} stackId="a" fill={selectedAssetId === 'all' ? ASSET_COLORS[idx % ASSET_COLORS.length] : getColor()} />
