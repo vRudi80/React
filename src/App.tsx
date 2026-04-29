@@ -168,27 +168,48 @@ useEffect(() => {
     if (!allowed.includes(type)) setType(allowed[0]);
   }, [targetAssetId, type, assets]);
 
-  // --- GRAFIKON ADATOK ---
+ // --- GRAFIKON ADATOK ---
 
   const chartData = useMemo(() => {
-    const keyLen = viewMode === 'monthly' ? 7 : 4;
     const dataMap: { [key: string]: any } = {};
     const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
     const fInv = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
 
     if (displayMode === 'usage') {
-      const filtered = fRec.filter((r: any) => r.Type === filter).sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
-      for (let i = 1; i < filtered.length; i++) {
-        const diff = parseFloat(filtered[i].Value) - parseFloat(filtered[i-1].Value);
-        if (diff >= 0) {
-          const key = filtered[i].FormattedDate.substring(0, keyLen);
-          const asset = assets.find(a => String(a.Id) === String(filtered[i].AssetId));
-          const label = asset ? asset.FriendlyName : 'Egyéb';
-          if (!dataMap[key]) dataMap[key] = { label: key };
-          dataMap[key][label] = (dataMap[key][label] || 0) + diff;
+      // 1. Eszközönként csoportosítjuk az adatokat, hogy ne vonjunk ki egymásból különböző mérőórákat
+      const assetsMap: { [key: string]: any[] } = {};
+      fRec.filter((r: any) => filter === 'Összes' ? true : r.Type === filter).forEach((r: any) => {
+        if (!assetsMap[r.AssetId]) assetsMap[r.AssetId] = [];
+        assetsMap[r.AssetId].push(r);
+      });
+
+      Object.keys(assetsMap).forEach(assetId => {
+        // Időrendbe állítjuk az adott eszközhöz tartozó mérőállásokat
+        const filtered = assetsMap[assetId].sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
+        
+        for (let i = 1; i < filtered.length; i++) {
+          const diff = parseFloat(filtered[i].Value) - parseFloat(filtered[i-1].Value);
+          if (diff >= 0) {
+            // JAVÍTÁS: A két óraállás közötti időszak KÖZEPÉT (midpoint) vesszük alapul.
+            // Így mindegy, hogy elsején vagy hónap végén olvasod le, a fogyasztás a megfelelő hónaphoz kerül.
+            const t1 = new Date(filtered[i-1].FormattedDate).getTime();
+            const t2 = new Date(filtered[i].FormattedDate).getTime();
+            const midDate = new Date(t1 + (t2 - t1) / 2);
+            
+            const year = midDate.getFullYear();
+            const month = String(midDate.getMonth() + 1).padStart(2, '0');
+            const key = viewMode === 'monthly' ? `${year}-${month}` : `${year}`;
+            
+            const asset = assets.find(a => String(a.Id) === String(assetId));
+            const label = asset ? asset.FriendlyName : 'Egyéb';
+            
+            if (!dataMap[key]) dataMap[key] = { label: key };
+            dataMap[key][label] = (dataMap[key][label] || 0) + diff;
+          }
         }
-      }
+      });
     } else {
+      const keyLen = viewMode === 'monthly' ? 7 : 4;
       fInv.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
         const key = String(inv.Month || "").substring(0, keyLen);
         const asset = assets.find(a => String(a.Id) === String(inv.AssetId));
