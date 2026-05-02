@@ -208,6 +208,42 @@ app.post('/api/invoices', verifyUser, async (req, res) => {
     } catch (err) { res.status(500).json({ error: 'Hiba' }); }
 });
 
+// --- ÚJ: Óraállás MÓDOSÍTÁSA ---
+app.put('/api/records/:id', verifyUser, async (req, res) => {
+    const { type, value, date, assetId } = req.body;
+    try {
+        const [result] = await pool.query(
+            'UPDATE utility_records SET Type = ?, Value = ?, Date = ?, AssetId = ? WHERE Id = ? AND UserId = ?',
+            [type, value, date, assetId, req.params.id, req.userId]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Rekord nem található vagy nincs jogosultságod módosítani.' });
+        }
+        res.json({ success: true });
+    } catch (err) { 
+        console.error("Hiba óraállás módosításakor:", err);
+        res.status(500).json({ error: 'Hiba' }); 
+    }
+});
+
+// --- ÚJ: Számla / Bevétel MÓDOSÍTÁSA ---
+app.put('/api/invoices/:id', verifyUser, async (req, res) => {
+    const { type, amount, date, assetId } = req.body;
+    try {
+        const [result] = await pool.query(
+            'UPDATE invoices SET Type = ?, Amount = ?, Month = ?, AssetId = ? WHERE Id = ? AND UserId = ?',
+            [type, amount, date, assetId, req.params.id, req.userId]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Számla nem található vagy nincs jogosultságod módosítani.' });
+        }
+        res.json({ success: true });
+    } catch (err) { 
+        console.error("Hiba számla módosításakor:", err);
+        res.status(500).json({ error: 'Hiba' }); 
+    }
+});
+
 app.delete('/api/records/:id', verifyUser, async (req, res) => {
     await pool.query('DELETE FROM utility_records WHERE Id = ? AND UserId = ?', [req.params.id, req.userId]);
     res.status(204).end();
