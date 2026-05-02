@@ -142,8 +142,9 @@ function App() {
     const allCatNames = categories.map(c => c.Name);
     if (!assetId || assetId === 'all') return allCatNames;
     const asset = assets.find((a: any) => String(a.Id) === String(assetId));
-    // Autókhoz hagyományosan az üzemanyagot kötjük, de ha van más is, rábízzuk a felhasználóra
-    return asset?.Category === 'property' ? allCatNames : (allCatNames.includes('Üzemanyag') ? ['Üzemanyag'] : allCatNames);
+    // Személyhez vagy ingatlanhoz minden kategóriát engedünk
+    if (asset?.Category === 'property' || asset?.Category === 'person') return allCatNames;
+    return allCatNames.includes('Üzemanyag') ? ['Üzemanyag'] : allCatNames;
   };
 
   useEffect(() => {
@@ -165,8 +166,8 @@ function App() {
     const allowed = getAllowedTypes(targetAssetId);
     const currentCat = categories.find(c => c.Name === type);
     
-    // Ha a kategória csak számlás (vagy az eszköz autó), kényszerítsük a számla rögzítő módot
-    if (asset?.Category === 'car' || currentCat?.Type === 'invoice_only') {
+    // Ha a kategória csak számlás, vagy bevétel, vagy az eszköz autó, kényszerítsük a számla rögzítő módot
+    if (asset?.Category === 'car' || currentCat?.Type === 'invoice_only' || currentCat?.Type === 'income') {
       setRecordMode('invoice');
     }
     
@@ -288,7 +289,7 @@ function App() {
     if (!value) return alert("Kérlek, add meg az értéket!");
     
     const currentCat = categories.find(c => c.Name === type);
-    const isInvoiceType = currentCat?.Type === 'invoice_only';
+    const isInvoiceType = currentCat?.Type === 'invoice_only' || currentCat?.Type === 'income';
     
     const body = { 
       type, 
@@ -378,7 +379,6 @@ function App() {
           )}
         </header>
 
-        {/* ÚJ: ADMIN KATEGÓRIA MENEDZSER */}
         {showCategoryManager && isAdmin && !isReadOnly && (
           <section className="card asset-manager-card">
             <h3>Kategóriák karbantartása</h3>
@@ -386,8 +386,9 @@ function App() {
               <input placeholder="Ikon (pl. ⚡)" value={newCategory.icon} onChange={(e) => setNewCategory({...newCategory, icon: e.target.value})} style={{width: '60px'}}/>
               <input placeholder="Kategória neve" value={newCategory.name} onChange={(e) => setNewCategory({...newCategory, name: e.target.value})} />
               <select value={newCategory.type} onChange={(e) => setNewCategory({...newCategory, type: e.target.value})}>
-                <option value="both">📟 Óraállás + 💰 Számla</option>
-                <option value="invoice_only">Csak 💰 Számla</option>
+                <option value="both">📟 Óraállás + 💰 Számla (Kiadás)</option>
+                <option value="invoice_only">Csak 💰 Számla (Kiadás)</option>
+                <option value="income">💵 Bevétel (Csak Számla)</option>
               </select>
               <div className="asset-form-buttons">
                 <button className="btn-primary" onClick={handleCategorySave}>Mentés</button>
@@ -399,7 +400,7 @@ function App() {
                 <div key={c.Id} className="asset-item">
                   <div className="asset-item-info">
                     <span>{c.Icon} {c.Name}</span> 
-                    <small>({c.Type === 'both' ? 'Mindkettő' : 'Csak számla'})</small>
+                    <small>({c.Type === 'both' ? 'Mindkettő' : c.Type === 'income' ? 'Bevétel' : 'Csak számla'})</small>
                   </div>
                   <div>
                     <button className="btn-edit-small" onClick={() => { setEditingCategoryId(c.Id); setNewCategory({ name: c.Name, icon: c.Icon, type: c.Type }); }}>✏️</button>
@@ -413,21 +414,27 @@ function App() {
 
         {showAssetManager && user && !isReadOnly && (
           <section className="card asset-manager-card">
-            <h3>{editingAssetId ? "Módosítás" : "Új eszköz"}</h3>
+            <h3>{editingAssetId ? "Módosítás" : "Új eszköz / Személy"}</h3>
             <div className="asset-form">
               <select value={newAsset.category} onChange={(e) => setNewAsset({...newAsset, category: e.target.value})}>
-                <option value="property">🏠 Ingatlan</option><option value="car">🚗 Jármű</option>
+                <option value="property">🏠 Ingatlan</option>
+                <option value="car">🚗 Jármű</option>
+                <option value="person">👤 Személy (Saját/Családtag)</option>
               </select>
               <input placeholder="Név" value={newAsset.friendlyName} onChange={(e) => setNewAsset({...newAsset, friendlyName: e.target.value})} />
-              {newAsset.category === 'property' ? (
+              
+              {newAsset.category === 'property' && (
                 <>
                   <input placeholder="Város" value={newAsset.city} onChange={(e) => setNewAsset({...newAsset, city: e.target.value})} />
                   <input placeholder="Utca, házszám" value={newAsset.street} onChange={(e) => setNewAsset({...newAsset, street: e.target.value})} />
                   <input placeholder="m²" type="number" value={newAsset.area} onChange={(e) => setNewAsset({...newAsset, area: e.target.value})} />
                 </>
-              ) : (
+              )}
+              {newAsset.category === 'car' && (
                 <input placeholder="Rendszám" value={newAsset.plateNumber} onChange={(e) => setNewAsset({...newAsset, plateNumber: e.target.value})} />
               )}
+              {/* Személy kategóriánál nem kérünk extra mezőket */}
+
               <div className="asset-form-buttons">
                  <button className="btn-primary" onClick={handleAssetSave}>Mentés</button>
                  {editingAssetId && <button className="btn-secondary" onClick={() => { setEditingAssetId(null); }}>Mégse</button>}
@@ -437,7 +444,8 @@ function App() {
               {assets.map((a: any) => (
                 <div key={a.Id} className="asset-item">
                   <div className="asset-item-info">
-                    <span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span>
+                    <span>{a.Category === 'car' ? '🚗' : a.Category === 'person' ? '👤' : '🏠'} {a.FriendlyName}</span>
+                    <small>{a.Category === 'car' ? a.PlateNumber : a.Category === 'property' ? a.City : 'Személyes'}</small>
                   </div>
                   <button className="btn-edit-small" onClick={() => { 
                     setEditingAssetId(a.Id);
@@ -458,7 +466,7 @@ function App() {
               <section className="card share-card compact">
                 <select value={selectedAssetId} onChange={(e) => setSelectedAssetId(e.target.value)}>
                   <option value="all">🌐 Összesített nézet</option>
-                  {assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</option>))}
+                  {assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.Category === 'car' ? '🚗' : a.Category === 'person' ? '👤' : '🏠'} {a.FriendlyName}</option>))}
                 </select>
                 
                   {!isReadOnly && (
@@ -503,11 +511,11 @@ function App() {
             {!isReadOnly && (
               <section className="card record-card">
                 <div className="record-type-toggle">
-                  <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')} disabled={assets.find(a => String(a.Id) === String(targetAssetId))?.Category === 'car' || categories.find(c => c.Name === type)?.Type === 'invoice_only'}>📟 Óraállás</button>
-                  <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>💰 Számla</button>
+                  <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')} disabled={assets.find(a => String(a.Id) === String(targetAssetId))?.Category === 'car' || categories.find(c => c.Name === type)?.Type === 'invoice_only' || categories.find(c => c.Name === type)?.Type === 'income'}>📟 Óraállás</button>
+                  <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>💰 Számla / Bevétel</button>
                 </div>
                 <div className="input-row">
-                  <select value={targetAssetId} onChange={(e) => setTargetAssetId(e.target.value)}><option value="">Eszköz...</option>{assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.FriendlyName}</option>))}</select>
+                  <select value={targetAssetId} onChange={(e) => setTargetAssetId(e.target.value)}><option value="">Eszköz / Személy...</option>{assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.FriendlyName}</option>))}</select>
                   <select value={type} onChange={(e) => setType(e.target.value)}>{getAllowedTypes(targetAssetId).map(t => <option key={t} value={t}>{getIcon(t)} {t}</option>)}</select>
                   <input type="date" value={recordMode === 'meter' ? meterDate : invoiceDate} onChange={(e) => recordMode === 'meter' ? setMeterDate(e.target.value) : setInvoiceDate(e.target.value)} />
                   <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték / Ft" />
@@ -525,7 +533,7 @@ function App() {
                 {displayMode === 'cost' && <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>{getIcon('Összes')} Összes</button>}
               </div>
               <div className="mode-toggle">
-                <button className={displayMode === 'usage' ? 'active' : ''} disabled={categories.find(c => c.Name === filter)?.Type === 'invoice_only' || filter === 'Összes'} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
+                <button className={displayMode === 'usage' ? 'active' : ''} disabled={categories.find(c => c.Name === filter)?.Type === 'invoice_only' || categories.find(c => c.Name === filter)?.Type === 'income' || filter === 'Összes'} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
                 <button className={displayMode === 'cost' ? 'active' : ''} onClick={() => setDisplayMode('cost')}>Költség</button>
               </div>
               <div className="view-toggle">
@@ -557,14 +565,20 @@ function App() {
               <div className="list-container">
                 {combinedList.map((item: any, idx) => {
                   const asset = assets.find(a => String(a.Id) === String(item.AssetId));
+                  const cat = categories.find(c => c.Name === item.Type);
+                  const isIncome = cat?.Type === 'income';
+
                   return (
                     <div key={idx} className={`record-item ${item.Type}`}>
                       <div className="record-info">
                         <div className="record-main-line"><span>{item.lType === 'meter' ? '📟' : '💰'} {String(item.d).substring(0, 10)} ({getIcon(item.Type)} {item.Type})</span></div>
-                        <div className="asset-tag">{asset ? <>{asset.Category === 'car' ? '🚗' : '🏠'} {asset.FriendlyName}</> : 'Nincs eszköz'}</div>
+                        <div className="asset-tag">{asset ? <>{asset.Category === 'car' ? '🚗' : asset.Category === 'person' ? '👤' : '🏠'} {asset.FriendlyName}</> : 'Nincs eszköz'}</div>
                       </div>
                       <div className="record-value-container">
-                        <span className="record-value">{(parseFloat(item.Value) || 0).toLocaleString()} {item.lType === 'meter' ? 'egység' : 'Ft'}</span>
+                        {/* BEVÉTEL ESETÉN ZÖLD SZÍN ÉS + JEL */}
+                        <span className="record-value" style={{ color: isIncome ? '#10b981' : '' }}>
+                          {isIncome ? '+' : ''}{(parseFloat(item.Value) || 0).toLocaleString()} {item.lType === 'meter' ? 'egység' : 'Ft'}
+                        </span>
                         {!isReadOnly && (
                           <button className="btn-delete" onClick={async () => { if(window.confirm("Törlöd?")) { await fetch(`${BACKEND_URL}/api/${item.lType === 'meter' ? 'records' : 'invoices'}/${item.Id || item.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } }); fetchAll(user.token); } }}>❌</button>
                         )}
