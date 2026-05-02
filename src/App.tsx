@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, 
-  CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine 
+  CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 import { GoogleOAuthProvider, GoogleLogin, googleLogout } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
@@ -172,7 +172,7 @@ function App() {
     if (allowed.length > 0 && !allowed.includes(type)) setType(allowed[0]);
   }, [targetAssetId, type, assets, categories]);
 
-  // --- ÚJ GRAFIKON LOGIKA (Kiadás fel, Bevétel le) ---
+  // --- ÚJ GRAFIKON LOGIKA (Kiadás és Bevétel külön oszlopban) ---
   const chartData = useMemo(() => {
     const dataMap: { [key: string]: any } = {};
     const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
@@ -213,15 +213,14 @@ function App() {
         const amount = parseFloat(inv.Amount || 0);
 
         if (key && key.length >= 4) {
-          if (!dataMap[key]) dataMap[key] = { label: key, totalExpense: 0, totalIncome: 0 };
+          if (!dataMap[key]) dataMap[key] = { label: key };
           
           if (isIncome) {
-            dataMap[key].totalIncome += amount;
-            // A bevételt negatívként rögzítjük a grafikonhoz, hogy a 0 vonal alá rajzolja
-            dataMap[key][label] = (dataMap[key][label] || 0) - amount;
+            // A bevételt egy "_income" utótaggal különítjük el a kiadásoktól a grafikonhoz
+            const incomeKey = `${label}_income`;
+            dataMap[key][incomeKey] = (dataMap[key][incomeKey] || 0) + amount;
           } else {
-            dataMap[key].totalExpense += amount;
-            // A kiadás pozitív, így felfelé épül
+            // A kiadás marad a sima néven
             dataMap[key][label] = (dataMap[key][label] || 0) + amount;
           }
         }
@@ -230,16 +229,15 @@ function App() {
     return Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
   }, [records, invoices, assets, filter, displayMode, viewMode, selectedAssetId, categories]);
 
-  // --- OKOS TOOLTIP (Összesítő egyenleggel) ---
+  // --- OKOS TOOLTIP (Szétbontja a kiadást és bevételt) ---
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-      const data = payload[0].payload;
       const unit = displayMode === 'cost' ? 'Ft' : '';
 
       if (displayMode === 'usage') {
         const total = payload.reduce((sum: number, entry: any) => sum + (Number(entry.value) || 0), 0);
         return (
-          <div style={{ backgroundColor: '#1e293b', padding: '12px', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+          <div style={{ backgroundColor: '#1e293b', padding: '12px', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', minWidth: '200px' }}>
             <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>{label}</p>
             {payload.map((entry: any, index: number) => (
               <div key={index} style={{ display: 'flex', justifyContent: 'space-between', gap: '20px', fontSize: '0.85rem', marginBottom: '6px' }}>
@@ -254,43 +252,56 @@ function App() {
         );
       }
 
-      // Költség nézet esetén
-      const netTotal = (data.totalIncome || 0) - (data.totalExpense || 0);
+      // Költség nézet esetén szétválogatjuk a bevételeket és kiadásokat
+      const expenses = payload.filter((p: any) => !p.dataKey.endsWith('_income'));
+      const incomes = payload.filter((p: any) => p.dataKey.endsWith('_income'));
+      
+      const totalExp = expenses.reduce((sum: number, p: any) => sum + Number(p.value), 0);
+      const totalInc = incomes.reduce((sum: number, p: any) => sum + Number(p.value), 0);
+      const netTotal = totalInc - totalExp;
 
       return (
-        <div style={{ backgroundColor: '#1e293b', padding: '12px', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
-          <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>{label}</p>
+        <div style={{ backgroundColor: '#1e293b', padding: '12px', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', minWidth: '220px' }}>
+          <p style={{ margin: '0 0 10px 0', fontWeight: 'bold', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>{label}</p>
           
-          {/* Elemek egyenként */}
-          {payload.map((entry: any, index: number) => {
-            const isBevetel = entry.value < 0; 
-            const displayVal = Math.abs(entry.value);
-            return (
-              <div key={index} style={{ display: 'flex', justifyContent: 'space-between', gap: '20px', fontSize: '0.85rem', marginBottom: '6px' }}>
-                <span style={{ color: entry.color }}>{entry.name}:</span>
-                <span style={{ fontWeight: 600, color: isBevetel ? '#10b981' : '#f8fafc' }}>
-                  {isBevetel ? '+' : ''}{displayVal.toLocaleString()} {unit}
-                </span>
-              </div>
-            );
-          })}
+          {incomes.length > 0 && (
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ color: '#10b981', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>Bevételek</div>
+              {incomes.map((entry: any, index: number) => (
+                <div key={`inc-${index}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '15px', fontSize: '0.85rem', marginBottom: '4px' }}>
+                  <span style={{ color: entry.color }}>{entry.name.replace(' (Bevétel)', '')}:</span>
+                  <span style={{ fontWeight: 600, color: '#10b981' }}>+{Number(entry.value).toLocaleString()} {unit}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {expenses.length > 0 && (
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ color: '#f87171', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>Kiadások</div>
+              {expenses.map((entry: any, index: number) => (
+                <div key={`exp-${index}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '15px', fontSize: '0.85rem', marginBottom: '4px' }}>
+                  <span style={{ color: entry.color }}>{entry.name}:</span>
+                  <span style={{ fontWeight: 600, color: '#f8fafc' }}>{Number(entry.value).toLocaleString()} {unit}</span>
+                </div>
+              ))}
+            </div>
+          )}
           
-          {/* Összesítő egyenleg rész */}
-          <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #334155', fontSize: '0.85rem' }}>
-            {(data.totalExpense > 0) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f87171', marginBottom: '4px' }}>
-                <span>Kiadások:</span><span>-{data.totalExpense.toLocaleString()} Ft</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #475569', fontSize: '0.85rem' }}>
+            {totalExp > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f87171' }}>
+                <span>Össz. Kiadás:</span><span>-{totalExp.toLocaleString()} {unit}</span>
               </div>
             )}
-            {(data.totalIncome > 0) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#10b981', marginBottom: '4px' }}>
-                <span>Bevételek:</span><span>+{data.totalIncome.toLocaleString()} Ft</span>
+            {totalInc > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#10b981' }}>
+                <span>Össz. Bevétel:</span><span>+{totalInc.toLocaleString()} {unit}</span>
               </div>
             )}
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed #475569', color: netTotal > 0 ? '#10b981' : (netTotal < 0 ? '#f87171' : '#f8fafc') }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1rem', marginTop: '4px', color: netTotal > 0 ? '#10b981' : (netTotal < 0 ? '#f87171' : '#f8fafc') }}>
               <span>Egyenleg:</span>
-              <span>{netTotal > 0 ? '+' : ''}{netTotal.toLocaleString()} Ft</span>
+              <span>{netTotal > 0 ? '+' : ''}{netTotal.toLocaleString()} {unit}</span>
             </div>
           </div>
         </div>
@@ -609,14 +620,31 @@ function App() {
                   <ResponsiveContainer>
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                      <ReferenceLine y={0} stroke="#94a3b8" />
                       <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                       <YAxis fontSize={10} stroke="#94a3b8" />
-                     <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }} />
+                      <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }} />
                       <Legend />
-                      {(selectedAssetId === 'all' ? assets : assets.filter(a => String(a.Id) === String(selectedAssetId))).map((asset, idx) => (
-                        <Bar key={asset.Id} dataKey={asset.FriendlyName} stackId="a" fill={selectedAssetId === 'all' ? ASSET_COLORS[idx % ASSET_COLORS.length] : getColor()} />
-                      ))}
+                      
+                      {/* Végigmegyünk az eszközökön, és létrehozzuk a kiadásokat, majd a bevételeket a grafikonban */}
+                      {(selectedAssetId === 'all' ? assets : assets.filter(a => String(a.Id) === String(selectedAssetId))).map((asset, idx) => {
+                        const color = selectedAssetId === 'all' ? ASSET_COLORS[idx % ASSET_COLORS.length] : getColor();
+                        return (
+                          <React.Fragment key={asset.Id}>
+                            {/* Kiadások Oszlopa */}
+                            <Bar dataKey={asset.FriendlyName} stackId="expense" fill={color} />
+                            
+                            {/* Bevételek Oszlopa (ugyanaz a szín, de külön oszlop, átlátszósággal megjelölve) */}
+                            <Bar 
+                              dataKey={`${asset.FriendlyName}_income`} 
+                              name={`${asset.FriendlyName} (Bevétel)`} 
+                              stackId="income" 
+                              fill={color} 
+                              opacity={0.6} 
+                              legendType="none" 
+                            />
+                          </React.Fragment>
+                        );
+                      })}
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <div className="no-data-msg">Nincs adat</div>}
