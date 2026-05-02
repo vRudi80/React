@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, 
-  CartesianGrid, Tooltip, ResponsiveContainer, Legend 
+  CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend 
 } from 'recharts';
 import { GoogleOAuthProvider, GoogleLogin, googleLogout } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
@@ -11,7 +11,7 @@ const BACKEND_URL = "https://react-ideas-backend.onrender.com";
 const GOOGLE_CLIENT_ID = "197361744572-ih728hq5jft3fqfd1esvktvrd8i97kcp.apps.googleusercontent.com";
 const ASSET_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
-// ⚠️ IDE ÍRD BE A SAJÁT E-MAIL CÍMEDET!
+// ⚠️ IDE ÍRD BE A SAJÁT E-MAIL CÍMEDET, HOGY LÁSD AZ ADMIN GOMBOT!
 const ADMIN_EMAILS = ['kovari.rudolf@gmail.com']; 
 
 function App() {
@@ -20,7 +20,8 @@ function App() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
-  const [sharedWithMe, setSharedWithMe] = useState<any[]>([]);
+  const [sharedUsers, setSharedUsers] = useState<any[]>([]);
+  const [myShares, setMyShares] = useState<any[]>([]); 
   
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string>('all');
@@ -38,22 +39,38 @@ function App() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [shareEmail, setShareEmail] = useState('');
   
-  const [newAsset, setNewAsset] = useState({ category: 'property', friendlyName: '', city: '', street: '', houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' });
+  const [newAsset, setNewAsset] = useState({ 
+    category: 'property', friendlyName: '', city: '', street: '', 
+    houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' 
+  });
+  
   const [newCategory, setNewCategory] = useState({ name: '', icon: '📄', type: 'both' });
 
-  // VISSZAÁLLÍTVA: Eredeti UI állapotok
   const [filter, setFilter] = useState('Összes');
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('cost');
 
   const isAdmin = user && ADMIN_EMAILS.includes(user.email);
-  const isReadOnly = user && viewingUserId !== user.sub;
+  const isReadOnly = viewingUserId !== null && viewingUserId !== user?.sub;
 
-  const forceLogout = () => {
-    googleLogout();
-    setUser(null);
-    setRecords([]); setInvoices([]); setAssets([]); setCategories([]);
-    localStorage.removeItem('userToken');
+  // --- LEKÉRDEZÉSEK ---
+
+  const fetchMyShares = async (token: string) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/shares/owned`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setMyShares(await res.json());
+    } catch (e) { console.error("Hiba", e); }
+  };
+
+  const fetchSharedAccounts = async (token: string) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/shares/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setSharedUsers(await res.json());
+    } catch (e) { console.error("Hiba a megosztások lekérésekor", e); }
   };
 
   const fetchAll = async (token: string, targetId?: string) => {
@@ -61,100 +78,174 @@ function App() {
     if (!id || !token) return;
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
-      const [recRes, invRes, assetRes, catRes, shareRes] = await Promise.all([
+      const [recRes, invRes, assetRes, catRes] = await Promise.all([
         fetch(`${BACKEND_URL}/api/records?userId=${id}`, { headers }),
         fetch(`${BACKEND_URL}/api/invoices?userId=${id}`, { headers }),
         fetch(`${BACKEND_URL}/api/assets?userId=${id}`, { headers }),
-        fetch(`${BACKEND_URL}/api/categories`, { headers }),
-        fetch(`${BACKEND_URL}/api/shares/me`, { headers })
+        fetch(`${BACKEND_URL}/api/categories`, { headers })
       ]);
-
       if (recRes.status === 401) return forceLogout();
       
       const recData = await recRes.json();
       const invData = await invRes.json();
       const astData = await assetRes.json();
       const catData = await catRes.json();
-      const shrData = await shareRes.json();
-
+      
       setRecords(Array.isArray(recData) ? recData : []);
       setInvoices(Array.isArray(invData) ? invData : []);
       setAssets(Array.isArray(astData) ? astData : []);
-      setCategories(Array.isArray(catData) ? catData : []);
-      setSharedWithMe(Array.isArray(shrData) ? shrData : []);
-
-      if (catData.length > 0 && !type) setType(catData[0].Name);
+      
+      const loadedCategories = Array.isArray(catData) ? catData : [];
+      setCategories(loadedCategories);
+      
+      if (loadedCategories.length > 0 && !type) {
+        setType(loadedCategories[0].Name);
+      }
     } catch (err) { console.error("Adatlekérési hiba"); }
+  };
+
+  const handleLoginSuccess = async (token: string) => {
+    try {
+      const decoded: any = jwtDecode(token);
+      setUser({ ...decoded, token });
+      setViewingUserId(decoded.sub);
+      localStorage.setItem('userToken', token);
+      
+      fetchAll(token, decoded.sub);
+      fetchSharedAccounts(token);
+      fetchMyShares(token);
+
+      await fetch(`${BACKEND_URL}/api/login-sync`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+    } catch (e) {
+      console.error("Hiba a bejelentkezés feldolgozásakor", e);
+      forceLogout();
+    }
+  };
+
+  const forceLogout = () => {
+    googleLogout();
+    setUser(null);
+    setRecords([]); setInvoices([]); setAssets([]); setCategories([]);
+    setSharedUsers([]); setMyShares([]);
+    localStorage.removeItem('userToken');
   };
 
   useEffect(() => {
     const savedToken = localStorage.getItem('userToken');
-    if (savedToken) {
-      try {
-        const decoded: any = jwtDecode(savedToken);
-        setUser({ ...decoded, token: savedToken });
-        setViewingUserId(decoded.sub);
-        fetchAll(savedToken, decoded.sub);
-      } catch (e) { forceLogout(); }
-    }
+    if (savedToken) handleLoginSuccess(savedToken);
   }, []);
 
-  useEffect(() => {
-    if (user && viewingUserId) {
-      fetchAll(user.token, viewingUserId);
-      setSelectedAssetId('all');
-    }
-  }, [viewingUserId]);
-
   const getAllowedTypes = (assetId: string) => {
-    if (!assetId || assetId === 'all') return categories.map(c => c.Name);
+    const allCatNames = categories.map(c => c.Name);
+    if (!assetId || assetId === 'all') return allCatNames;
     const asset = assets.find((a: any) => String(a.Id) === String(assetId));
-    if (asset?.Category === 'property') {
-        return categories.map(c => c.Name);
-    } else {
-        return categories.filter(c => c.Name === 'Üzemanyag').map(c => c.Name);
-    }
+    // Autókhoz hagyományosan az üzemanyagot kötjük, de ha van más is, rábízzuk a felhasználóra
+    return asset?.Category === 'property' ? allCatNames : (allCatNames.includes('Üzemanyag') ? ['Üzemanyag'] : allCatNames);
   };
 
-  // VISSZAÁLLÍTVA: Automatikus szűrő és típus beállítások
   useEffect(() => {
     if (selectedAssetId !== 'all') {
       setTargetAssetId(selectedAssetId);
       const asset = assets.find(a => String(a.Id) === String(selectedAssetId));
       if (asset?.Category === 'car') {
-        setFilter('Üzemanyag');
+        if (categories.find(c => c.Name === 'Üzemanyag')) setFilter('Üzemanyag');
         setDisplayMode('cost');
       }
     } else {
       setFilter('Összes');
       setDisplayMode('cost');
     }
-  }, [selectedAssetId, assets.length]);
+  }, [selectedAssetId, assets.length, categories]);
 
   useEffect(() => {
     const asset = assets.find(a => String(a.Id) === String(targetAssetId));
     const allowed = getAllowedTypes(targetAssetId);
     const currentCat = categories.find(c => c.Name === type);
     
-    if (currentCat?.Type === 'invoice_only' || asset?.Category === 'car') {
+    // Ha a kategória csak számlás (vagy az eszköz autó), kényszerítsük a számla rögzítő módot
+    if (asset?.Category === 'car' || currentCat?.Type === 'invoice_only') {
       setRecordMode('invoice');
     }
+    
     if (allowed.length > 0 && !allowed.includes(type)) setType(allowed[0]);
   }, [targetAssetId, type, assets, categories]);
 
-  // VISSZAÁLLÍTVA: Megosztás funkció (Sajátból)
-  const handleShare = async () => {
-    if (!shareEmail) return;
-    const res = await fetch(`${BACKEND_URL}/api/shares`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-      body: JSON.stringify({ sharedWithEmail: shareEmail })
-    });
-    if (res.ok) { alert("Sikeresen megosztva!"); setShareEmail(''); }
+  // --- GRAFIKON ADATOK ---
+
+  const chartData = useMemo(() => {
+    const dataMap: { [key: string]: any } = {};
+    const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
+    const fInv = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
+
+    if (displayMode === 'usage') {
+      const assetsMap: { [key: string]: any[] } = {};
+      fRec.filter((r: any) => filter === 'Összes' ? true : r.Type === filter).forEach((r: any) => {
+        if (!assetsMap[r.AssetId]) assetsMap[r.AssetId] = [];
+        assetsMap[r.AssetId].push(r);
+      });
+
+      Object.keys(assetsMap).forEach(assetId => {
+        const filtered = assetsMap[assetId].sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
+        for (let i = 1; i < filtered.length; i++) {
+          const diff = parseFloat(filtered[i].Value) - parseFloat(filtered[i-1].Value);
+          if (diff >= 0) {
+            const t1 = new Date(filtered[i-1].FormattedDate).getTime();
+            const t2 = new Date(filtered[i].FormattedDate).getTime();
+            const midDate = new Date(t1 + (t2 - t1) / 2);
+            const year = midDate.getFullYear();
+            const month = String(midDate.getMonth() + 1).padStart(2, '0');
+            const key = viewMode === 'monthly' ? `${year}-${month}` : `${year}`;
+            const asset = assets.find(a => String(a.Id) === String(assetId));
+            const label = asset ? asset.FriendlyName : 'Egyéb';
+            if (!dataMap[key]) dataMap[key] = { label: key };
+            dataMap[key][label] = (dataMap[key][label] || 0) + diff;
+          }
+        }
+      });
+    } else {
+      const keyLen = viewMode === 'monthly' ? 7 : 4;
+      fInv.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
+        const key = String(inv.Month || "").substring(0, keyLen);
+        const asset = assets.find(a => String(a.Id) === String(inv.AssetId));
+        const label = asset ? asset.FriendlyName : 'Egyéb';
+        if (key && key.length >= 4) {
+          if (!dataMap[key]) dataMap[key] = { label: key };
+          dataMap[key][label] = (dataMap[key][label] || 0) + parseFloat(inv.Amount || 0);
+        }
+      });
+    }
+    return Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
+  }, [records, invoices, assets, filter, displayMode, viewMode, selectedAssetId]);
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const total = payload.reduce((sum: number, entry: any) => sum + (Number(entry.value) || 0), 0);
+      const unit = displayMode === 'cost' ? 'Ft' : '';
+      return (
+        <div style={{ backgroundColor: '#1e293b', padding: '12px', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>{label}</p>
+          {payload.map((entry: any, index: number) => (
+            <div key={index} style={{ display: 'flex', justifyContent: 'space-between', gap: '20px', fontSize: '0.85rem', marginBottom: '6px' }}>
+              <span style={{ color: entry.color }}>{entry.name}:</span>
+              <span style={{ fontWeight: 600 }}>{Number(entry.value).toLocaleString()} {unit}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '20px', fontSize: '0.95rem', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #334155', fontWeight: 'bold', color: '#10b981' }}>
+            <span>Összesen:</span><span>{total.toLocaleString()} {unit}</span>
+          </div>
+        </div>
+      );
+    }
+    return null;
   };
 
+  // --- HANDLEREK ---
+
   const handleAssetSave = async () => {
-    if (isReadOnly || !newAsset.friendlyName) return alert("Adj nevet az eszköznek!");
+    if (!newAsset.friendlyName) return alert("Adj nevet az eszköznek!");
     const method = editingAssetId ? 'PUT' : 'POST';
     const url = editingAssetId ? `${BACKEND_URL}/api/assets/${editingAssetId}` : `${BACKEND_URL}/api/assets`;
     const res = await fetch(url, {
@@ -165,12 +256,12 @@ function App() {
       setEditingAssetId(null);
       setNewAsset({ category: 'property', friendlyName: '', city: '', street: '', houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' });
       setShowAssetManager(false);
-      fetchAll(user.token, viewingUserId!);
+      fetchAll(user.token);
     }
   };
 
   const handleCategorySave = async () => {
-    if (!isAdmin) return;
+    if (!isAdmin || !newCategory.name) return;
     const url = editingCategoryId ? `${BACKEND_URL}/api/categories/${editingCategoryId}` : `${BACKEND_URL}/api/categories`;
     const res = await fetch(url, {
       method: editingCategoryId ? 'PUT' : 'POST',
@@ -180,23 +271,25 @@ function App() {
     if (res.ok) {
       setEditingCategoryId(null);
       setNewCategory({ name: '', icon: '📄', type: 'both' });
-      fetchAll(user.token, viewingUserId!);
+      fetchAll(user.token);
     }
   };
 
   const handleCategoryDelete = async (id: number) => {
-    if (!isAdmin || !window.confirm("Biztos törlöd a kategóriát?")) return;
+    if (!isAdmin || !window.confirm("Biztosan törlöd a kategóriát?")) return;
     const res = await fetch(`${BACKEND_URL}/api/categories/${id}`, {
       method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` }
     });
-    if (res.ok) fetchAll(user.token, viewingUserId!);
+    if (res.ok) fetchAll(user.token);
   };
 
   const handleSave = async () => {
-    if (isReadOnly || !value || !targetAssetId) return alert("Válassz eszközt!");
+    if (!targetAssetId || targetAssetId === 'all') return alert("Kérlek, válassz ki egy konkrét eszközt a mentéshez!");
+    if (!value) return alert("Kérlek, add meg az értéket!");
+    
     const currentCat = categories.find(c => c.Name === type);
     const isInvoiceType = currentCat?.Type === 'invoice_only';
-
+    
     const body = { 
       type, 
       value: parseFloat(value), 
@@ -211,22 +304,41 @@ function App() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(body)
     });
+    
     if (res.ok) { setValue(''); fetchAll(user.token, viewingUserId!); } 
     else { alert("Hiba történt a mentés során."); }
   };
 
-  // VISSZAÁLLÍTVA: Eredeti ikon és szín generátorok, integrálva a dinamikus kategóriákkal
+  const handleShare = async () => {
+    if (!shareEmail) return alert("Kérlek adj meg egy email címet!");
+    const res = await fetch(`${BACKEND_URL}/api/shares`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+      body: JSON.stringify({ sharedWithEmail: shareEmail })
+    });
+    if (res.ok) { alert("Sikeres megosztás!"); setShareEmail(''); fetchMyShares(user.token); } 
+    else { alert("Hiba történt a megosztás során."); }
+  };
+
+  const revokeShare = async (id: number) => {
+    if (!window.confirm("Biztosan visszavonod a hozzáférést?")) return;
+    const res = await fetch(`${BACKEND_URL}/api/shares/${id}`, {
+      method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` }
+    });
+    if (res.ok) fetchMyShares(user.token);
+  };
+
+  // Dinamikus Ikonok
   const getIcon = (t: string) => {
     if (t === 'Összes') return '📊';
     const cat = categories.find(c => c.Name === t);
     return cat ? cat.Icon : '📄';
   };
 
+  // Dinamikus Színek
   const getColor = (t: string = filter) => {
     if (displayMode === 'cost' && t !== 'Összes') return '#10b981';
     if (t === 'Összes') return '#6366f1';
-    
-    // Alapértelmezett színek, ha véletlen egyezik a név
     switch(t) {
       case 'Áram': return '#fbbf24';
       case 'Víz': return '#38bdf8';
@@ -236,74 +348,38 @@ function App() {
       case 'Szemétszállítás': return '#94a3b8';
       case 'Albérlet': return '#f472b6';
       default: 
-        // Generáljunk egy színt a név alapján az új kategóriáknak
         let hash = 0;
         for (let i = 0; i < t.length; i++) hash = t.charCodeAt(i) + ((hash << 5) - hash);
         return `hsl(${hash % 360}, 70%, 60%)`;
     }
   };
 
-  // VISSZAÁLLÍTVA: Eredeti kombinált lista
   const combinedList = [
     ...(filter === 'Összes' ? [] : records.filter(r => (selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId)) && r.Type === filter).map(r => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
     ...invoices.filter(i => (selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId)) && (filter === 'Összes' ? true : i.Type === filter)).map(i => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
   ].sort((a, b) => new Date(b.d).getTime() - new Date(a.d).getTime());
 
-  // VISSZAÁLLÍTVA: Eredeti részletes grafikon logika (Költség/Fogyasztás, Havi/Éves)
-  const chartData = useMemo(() => {
-    const keyLen = viewMode === 'monthly' ? 7 : 4;
-    const dataMap: { [key: string]: any } = {};
-    const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
-    const fInv = invoices.filter((i: any) => selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId));
-
-    if (displayMode === 'usage') {
-      const filtered = fRec.filter((r: any) => r.Type === filter).sort((a: any, b: any) => new Date(a.FormattedDate).getTime() - new Date(b.FormattedDate).getTime());
-      for (let i = 1; i < filtered.length; i++) {
-        const diff = parseFloat(filtered[i].Value) - parseFloat(filtered[i-1].Value);
-        if (diff >= 0) {
-          const key = filtered[i].FormattedDate.substring(0, keyLen);
-          const asset = assets.find(a => String(a.Id) === String(filtered[i].AssetId));
-          const label = asset ? asset.FriendlyName : 'Egyéb';
-          if (!dataMap[key]) dataMap[key] = { label: key };
-          dataMap[key][label] = (dataMap[key][label] || 0) + diff;
-        }
-      }
-    } else {
-      fInv.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
-        const key = String(inv.Month || "").substring(0, keyLen);
-        const asset = assets.find(a => String(a.Id) === String(inv.AssetId));
-        const label = asset ? asset.FriendlyName : 'Egyéb';
-        if (key && key.length >= 4) {
-          if (!dataMap[key]) dataMap[key] = { label: key };
-          dataMap[key][label] = (dataMap[key][label] || 0) + parseFloat(inv.Amount || 0);
-        }
-      });
-    }
-    return Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
-  }, [records, invoices, assets, filter, displayMode, viewMode, selectedAssetId]);
-
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <div className="app-wrapper">
         <header className="main-header">
-          <h1 className="logo" onClick={() => { setViewingUserId(user?.sub); setFilter('Összes'); setDisplayMode('cost'); }}>Rezsiapp 2.0</h1>
+          <h1 className="logo">Rezsiapp 2.0</h1>
           {user && (
             <div className="user-info">
-              <select className="profile-selector" value={viewingUserId || ''} onChange={(e) => setViewingUserId(e.target.value)}>
-                <option value={user.sub}>Saját fiók</option>
-                {sharedWithMe.map(s => <option key={s.owner_id} value={s.owner_id}>👥 {s.owner_email}</option>)}
-              </select>
-              {isAdmin && (
+              {isAdmin && !isReadOnly && (
                 <button className="btn-asset-toggle" onClick={() => { setShowCategoryManager(!showCategoryManager); setShowAssetManager(false); }}>⚙️ Kategóriák</button>
               )}
-              <button className="btn-asset-toggle" onClick={() => { setShowAssetManager(!showAssetManager); setShowCategoryManager(false); }}>🏠 Eszközök</button>
+              {!isReadOnly && (
+                <button className="btn-asset-toggle" onClick={() => { setShowAssetManager(!showAssetManager); setShowCategoryManager(false); }}>🏠 Eszközök</button>
+              )}
               <img src={user.picture} alt="Profil" title={user.email} />
               <button className="btn-logout" onClick={forceLogout}>Kilépés</button>
             </div>
           )}
         </header>
 
-        {showCategoryManager && isAdmin && (
+        {/* ÚJ: ADMIN KATEGÓRIA MENEDZSER */}
+        {showCategoryManager && isAdmin && !isReadOnly && (
           <section className="card asset-manager-card">
             <h3>Kategóriák karbantartása</h3>
             <div className="asset-form">
@@ -315,6 +391,7 @@ function App() {
               </select>
               <div className="asset-form-buttons">
                 <button className="btn-primary" onClick={handleCategorySave}>Mentés</button>
+                {editingCategoryId && <button className="btn-secondary" onClick={() => setEditingCategoryId(null)}>Mégse</button>}
               </div>
             </div>
             <div className="asset-list">
@@ -336,11 +413,10 @@ function App() {
 
         {showAssetManager && user && !isReadOnly && (
           <section className="card asset-manager-card">
-            <h3>{editingAssetId ? "Eszköz módosítása" : "Új eszköz"}</h3>
+            <h3>{editingAssetId ? "Módosítás" : "Új eszköz"}</h3>
             <div className="asset-form">
               <select value={newAsset.category} onChange={(e) => setNewAsset({...newAsset, category: e.target.value})}>
-                <option value="property">🏠 Ingatlan</option>
-                <option value="car">🚗 Jármű</option>
+                <option value="property">🏠 Ingatlan</option><option value="car">🚗 Jármű</option>
               </select>
               <input placeholder="Név" value={newAsset.friendlyName} onChange={(e) => setNewAsset({...newAsset, friendlyName: e.target.value})} />
               {newAsset.category === 'property' ? (
@@ -353,8 +429,8 @@ function App() {
                 <input placeholder="Rendszám" value={newAsset.plateNumber} onChange={(e) => setNewAsset({...newAsset, plateNumber: e.target.value})} />
               )}
               <div className="asset-form-buttons">
-                <button className="btn-primary" onClick={handleAssetSave}>Mentés</button>
-                {editingAssetId && <button className="btn-secondary" onClick={() => setEditingAssetId(null)}>Mégse</button>}
+                 <button className="btn-primary" onClick={handleAssetSave}>Mentés</button>
+                 {editingAssetId && <button className="btn-secondary" onClick={() => { setEditingAssetId(null); }}>Mégse</button>}
               </div>
             </div>
             <div className="asset-list">
@@ -362,9 +438,14 @@ function App() {
                 <div key={a.Id} className="asset-item">
                   <div className="asset-item-info">
                     <span>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</span>
-                    <small>{a.Category === 'car' ? a.PlateNumber : a.City}</small>
                   </div>
-                  <button className="btn-edit-small" onClick={() => { setEditingAssetId(a.Id); setNewAsset({ ...a, category: a.Category, friendlyName: a.FriendlyName }); }}>✏️</button>
+                  <button className="btn-edit-small" onClick={() => { 
+                    setEditingAssetId(a.Id);
+                    setNewAsset({ 
+                      category: a.Category || 'property', friendlyName: a.FriendlyName || '', city: a.City || '', street: a.Street || '',
+                      houseNumber: a.HouseNumber || '', plateNumber: a.PlateNumber || '', fuelType: a.FuelType || 'Benzin', area: a.Area || ''
+                    });
+                  }}>✏️</button>
                 </div>
               ))}
             </div>
@@ -373,57 +454,75 @@ function App() {
 
         {user ? (
           <>
-            <div className="top-row">
+            <div className="top-row" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
               <section className="card share-card compact">
                 <select value={selectedAssetId} onChange={(e) => setSelectedAssetId(e.target.value)}>
                   <option value="all">🌐 Összesített nézet</option>
                   {assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.Category === 'car' ? '🚗' : '🏠'} {a.FriendlyName}</option>))}
                 </select>
-                {!isReadOnly && (
-                  <div className="share-input-group">
-                    <input type="email" placeholder="Megosztás (email)..." value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
-                    <button className="btn-share" onClick={handleShare}>+</button>
-                  </div>
+                
+                  {!isReadOnly && (
+                  <>
+                    <div className="share-input-group">
+                      <input type="email" placeholder="Kivel osztod meg?" value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} />
+                      <button className="btn-share" onClick={handleShare}>+</button>
+                    </div>
+                    
+                    {myShares.length > 0 && (
+                      <div className="shared-list" style={{ marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px' }}>
+                        <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '8px' }}>Hozzáféréssel rendelkeznek:</p>
+                        {myShares.map(s => (
+                          <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px', fontSize: '0.85rem' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.shared_with_email}</span>
+                            <button onClick={() => revokeShare(s.id)} style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '0.8rem' }}>Visszavonás</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
-            </div>
 
-            {isReadOnly && <div className="read-only-banner">👁️ Most <b>{sharedWithMe.find(s => s.owner_id === viewingUserId)?.owner_email}</b> adatait látod</div>}
+              {sharedUsers.length > 0 && (
+                <section className="card share-card compact">
+                  <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: '5px' }}>Nézet:</label>
+                  <select value={viewingUserId || user?.sub} onChange={(e) => {
+                    setViewingUserId(e.target.value);
+                    setSelectedAssetId('all');
+                    fetchAll(user.token, e.target.value);
+                  }}>
+                    <option value={user?.sub}>Saját adataim</option>
+                    {sharedUsers.map(su => (
+                      <option key={su.owner_id} value={su.owner_id}>{su.owner_email} adatai</option>
+                    ))}
+                  </select>
+                </section>
+              )}
+            </div>
 
             {!isReadOnly && (
               <section className="card record-card">
                 <div className="record-type-toggle">
-                  <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')} disabled={categories.find(c => c.Name === type)?.Type === 'invoice_only' || assets.find(a => String(a.Id) === String(targetAssetId))?.Category === 'car'}>📟 Óraállás</button>
+                  <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')} disabled={assets.find(a => String(a.Id) === String(targetAssetId))?.Category === 'car' || categories.find(c => c.Name === type)?.Type === 'invoice_only'}>📟 Óraállás</button>
                   <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>💰 Számla</button>
                 </div>
                 <div className="input-row">
-                  <select value={targetAssetId} onChange={(e) => setTargetAssetId(e.target.value)}>
-                    <option value="">Eszköz...</option>
-                    {assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.FriendlyName}</option>))}
-                  </select>
-                  <select value={type} onChange={(e) => setType(e.target.value)}>
-                    {getAllowedTypes(targetAssetId).map(t => <option key={t} value={t}>{getIcon(t)} {t}</option>)}
-                  </select>
+                  <select value={targetAssetId} onChange={(e) => setTargetAssetId(e.target.value)}><option value="">Eszköz...</option>{assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.FriendlyName}</option>))}</select>
+                  <select value={type} onChange={(e) => setType(e.target.value)}>{getAllowedTypes(targetAssetId).map(t => <option key={t} value={t}>{getIcon(t)} {t}</option>)}</select>
                   <input type="date" value={recordMode === 'meter' ? meterDate : invoiceDate} onChange={(e) => recordMode === 'meter' ? setMeterDate(e.target.value) : setInvoiceDate(e.target.value)} />
                   <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték / Ft" />
                 </div>
-                <button className="btn-primary" onClick={handleSave}>Adat mentése</button>
+               <button className="btn-primary" onClick={handleSave} disabled={!targetAssetId || targetAssetId === 'all' || !value}>Adat mentése</button>
               </section>
             )}
 
-            {/* VISSZAÁLLÍTVA: Vezérlők (Szűrők, Nézetek) */}
+            {/* DINAMIKUS SZŰRŐGOMBOK */}
             <div className="controls-bar">
               <div className="filter-buttons">
                 {categories.map(c => (
-                  <button key={c.Id} className={filter === c.Name ? 'active' : ''} onClick={() => setFilter(c.Name)} style={filter === c.Name ? {backgroundColor: getColor(c.Name), borderColor: getColor(c.Name)} : {}}>
-                    {c.Icon} {c.Name}
-                  </button>
+                  <button key={c.Id} className={filter === c.Name ? 'active' : ''} onClick={() => setFilter(c.Name)} style={filter === c.Name ? {backgroundColor: getColor(c.Name), borderColor: getColor(c.Name)} : {}}>{c.Icon} {c.Name}</button>
                 ))}
-                {displayMode === 'cost' && (
-                  <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>
-                    {getIcon('Összes')} Összes
-                  </button>
-                )}
+                {displayMode === 'cost' && <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>{getIcon('Összes')} Összes</button>}
               </div>
               <div className="mode-toggle">
                 <button className={displayMode === 'usage' ? 'active' : ''} disabled={categories.find(c => c.Name === filter)?.Type === 'invoice_only' || filter === 'Összes'} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
@@ -443,34 +542,31 @@ function App() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                       <XAxis dataKey="label" fontSize={10} stroke="#94a3b8" />
                       <YAxis fontSize={10} stroke="#94a3b8" />
-                      <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} />
+                     <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }} />
                       <Legend />
                       {(selectedAssetId === 'all' ? assets : assets.filter(a => String(a.Id) === String(selectedAssetId))).map((asset, idx) => (
                         <Bar key={asset.Id} dataKey={asset.FriendlyName} stackId="a" fill={selectedAssetId === 'all' ? ASSET_COLORS[idx % ASSET_COLORS.length] : getColor()} />
                       ))}
                     </BarChart>
                   </ResponsiveContainer>
-                ) : <div className="no-data-msg">Nincs megjeleníthető adat a kiválasztott szűrőkkel</div>}
+                ) : <div className="no-data-msg">Nincs adat</div>}
               </div>
             </section>
 
-            {/* VISSZAÁLLÍTVA: Eredeti részletes lista */}
             <section className="list-section">
               <div className="list-container">
                 {combinedList.map((item: any, idx) => {
                   const asset = assets.find(a => String(a.Id) === String(item.AssetId));
                   return (
-                    <div key={idx} className={`record-item ${item.lType === 'invoice' ? 'invoice' : ''}`}>
+                    <div key={idx} className={`record-item ${item.Type}`}>
                       <div className="record-info">
-                        <div className="record-main-line">
-                          <span>{item.lType === 'meter' ? '📟' : '💰'} {String(item.d).substring(0, 10)} ({getIcon(item.Type)} {item.Type})</span>
-                        </div>
+                        <div className="record-main-line"><span>{item.lType === 'meter' ? '📟' : '💰'} {String(item.d).substring(0, 10)} ({getIcon(item.Type)} {item.Type})</span></div>
                         <div className="asset-tag">{asset ? <>{asset.Category === 'car' ? '🚗' : '🏠'} {asset.FriendlyName}</> : 'Nincs eszköz'}</div>
                       </div>
                       <div className="record-value-container">
                         <span className="record-value">{(parseFloat(item.Value) || 0).toLocaleString()} {item.lType === 'meter' ? 'egység' : 'Ft'}</span>
                         {!isReadOnly && (
-                          <button className="btn-delete" onClick={async () => { if(window.confirm("Törlöd?")) { await fetch(`${BACKEND_URL}/api/${item.lType === 'meter' ? 'records' : 'invoices'}/${item.Id || item.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } }); fetchAll(user.token, viewingUserId!); } }}>❌</button>
+                          <button className="btn-delete" onClick={async () => { if(window.confirm("Törlöd?")) { await fetch(`${BACKEND_URL}/api/${item.lType === 'meter' ? 'records' : 'invoices'}/${item.Id || item.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } }); fetchAll(user.token); } }}>❌</button>
                         )}
                       </div>
                     </div>
@@ -479,22 +575,45 @@ function App() {
               </div>
             </section>
           </>
-        ) : (
-          /* VISSZAÁLLÍTVA: Eredeti szép belépő kártya */
-          <section className="card login-card">
-            <h2>Üdvözöllek a Rezsiappban!</h2>
-            <p className="login-desc">Kövesd nyomon ingatlanjaid és járműveid rezsi-, valamint üzemanyag költségeit egyetlen helyen. A folytatáshoz kérlek jelentkezz be.</p>
-            <div className="google-btn-container">
-              <GoogleLogin onSuccess={(res) => { 
-                const token = res.credential!; 
-                const decoded: any = jwtDecode(token); 
-                setUser({...decoded, token}); 
-                localStorage.setItem('userToken', token); 
-                setViewingUserId(decoded.sub);
-                fetchAll(token, decoded.sub); 
-              }} />
+      ) : (
+          <div className="login-container">
+            <div className="login-content">
+              <h1 className="login-title">Üdvözöl a <span className="highlight">Rezsiapp 2.0</span></h1>
+              <p className="login-subtitle">A legkényelmesebb módja a háztartási kiadások, mérőóra állások és az autód költségeinek nyomon követésére.</p>
+
+              <div className="features-grid">
+                <div className="feature-item">
+                  <span className="feature-icon">📊</span>
+                  <div className="feature-text">
+                    <h3>Vizuális statisztikák</h3>
+                    <p>Kövesd a fogyasztásod havi vagy éves szinten, átlátható és letisztult grafikonokon.</p>
+                  </div>
+                </div>
+                <div className="feature-item">
+                  <span className="feature-icon">🏠</span>
+                  <div className="feature-text">
+                    <h3>Ingatlanok és Járművek</h3>
+                    <p>Kezeld külön a lakásod rezsijét és az autód tankolásait, mindezt egyetlen helyen.</p>
+                  </div>
+                </div>
+                <div className="feature-item">
+                  <span className="feature-icon">🤝</span>
+                  <div className="feature-text">
+                    <h3>Családi megosztás</h3>
+                    <p>Oszd meg az adataidat a pároddal vagy lakótársaddal biztonságosan, egyetlen kattintással.</p>
+                  </div>
+                </div>
+              </div>
             </div>
-          </section>
+
+            <div className="login-action-card">
+              <h2>Kezdd el most!</h2>
+              <p>A belépéshez nincs szükség külön regisztrációra, csak használd a meglévő Google fiókodat biztonságosan.</p>
+              <div className="google-btn-wrapper">
+                <GoogleLogin onSuccess={(res) => handleLoginSuccess(res.credential!)} />
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </GoogleOAuthProvider>
