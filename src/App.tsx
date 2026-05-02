@@ -49,6 +49,7 @@ function App() {
   const [filter, setFilter] = useState('Összes');
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('cost');
+  const [chartRange, setChartRange] = useState<number | 'all'>(12); // <-- ÚJ: Grafikon tartomány szűrő
 
   const isAdmin = user && ADMIN_EMAILS.includes(user.email);
   const isReadOnly = viewingUserId !== null && viewingUserId !== user?.sub;
@@ -216,18 +217,24 @@ function App() {
           if (!dataMap[key]) dataMap[key] = { label: key };
           
           if (isIncome) {
-            // A bevételt egy "_income" utótaggal különítjük el a kiadásoktól a grafikonhoz
             const incomeKey = `${label}_income`;
             dataMap[key][incomeKey] = (dataMap[key][incomeKey] || 0) + amount;
           } else {
-            // A kiadás marad a sima néven
             dataMap[key][label] = (dataMap[key][label] || 0) + amount;
           }
         }
       });
     }
-    return Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
-  }, [records, invoices, assets, filter, displayMode, viewMode, selectedAssetId, categories]);
+    
+    // --- ÚJ LOGIKA A TARTOMÁNY SZŰRÉSÉRE ---
+    const sortedData = Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
+    
+    if (viewMode === 'monthly' && chartRange !== 'all') {
+      return sortedData.slice(-chartRange);
+    }
+    
+    return sortedData;
+  }, [records, invoices, assets, filter, displayMode, viewMode, selectedAssetId, categories, chartRange]); // <-- chartRange hozzáadva a deps-hez
 
   // --- OKOS TOOLTIP (Szétbontja a kiadást és bevételt) ---
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -611,6 +618,29 @@ function App() {
               <div className="view-toggle">
                 <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
                 <button className={viewMode === 'annual' ? 'active' : ''} onClick={() => setViewMode('annual')}>Éves</button>
+                
+                {/* --- ÚJ: Dátum tartomány választó --- */}
+                {viewMode === 'monthly' && (
+                  <select 
+                    value={chartRange} 
+                    onChange={(e) => setChartRange(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                    style={{ 
+                      marginLeft: '8px', 
+                      padding: '6px 12px', 
+                      borderRadius: '20px', 
+                      background: '#1e293b', 
+                      color: '#94a3b8', 
+                      border: '1px solid #334155',
+                      cursor: 'pointer',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value={6}>Utolsó 6 hónap</option>
+                    <option value={12}>Utolsó 12 hónap</option>
+                    <option value={24}>Utolsó 24 hónap</option>
+                    <option value="all">Összes mutatása</option>
+                  </select>
+                )}
               </div>
             </div>
 
