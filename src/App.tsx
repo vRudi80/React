@@ -11,7 +11,6 @@ const BACKEND_URL = "https://react-ideas-backend.onrender.com";
 const GOOGLE_CLIENT_ID = "197361744572-ih728hq5jft3fqfd1esvktvrd8i97kcp.apps.googleusercontent.com";
 const ASSET_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
-// ⚠️ IDE ÍRD BE A SAJÁT E-MAIL CÍMEDET, HOGY LÁSD AZ ADMIN GOMBOT!
 const ADMIN_EMAILS = ['kovari.rudolf@gmail.com']; 
 
 function App() {
@@ -39,7 +38,6 @@ function App() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [shareEmail, setShareEmail] = useState('');
   
-  // --- ÚJ: Állapotok a meglévő rekordok szerkesztéséhez ---
   const [editingRecordId, setEditingRecordId] = useState<number | string | null>(null);
   const [editingRecordLType, setEditingRecordLType] = useState<'meter' | 'invoice' | null>(null);
   
@@ -48,7 +46,8 @@ function App() {
     houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' 
   });
   
-  const [newCategory, setNewCategory] = useState({ name: '', icon: '📄', type: 'both' });
+  // ÚJ: isPublic állapot a kategóriákhoz
+  const [newCategory, setNewCategory] = useState({ name: '', icon: '📄', type: 'both', isPublic: false });
 
   const [filter, setFilter] = useState('Összes');
   const [viewMode, setViewMode] = useState('monthly'); 
@@ -90,7 +89,7 @@ function App() {
         fetch(`${BACKEND_URL}/api/records?userId=${id}`, { headers }),
         fetch(`${BACKEND_URL}/api/invoices?userId=${id}`, { headers }),
         fetch(`${BACKEND_URL}/api/assets?userId=${id}`, { headers }),
-        fetch(`${BACKEND_URL}/api/categories`, { headers })
+        fetch(`${BACKEND_URL}/api/categories?userId=${id}`, { headers }) // Kategóriáknál is átküldjük kinek a nézetét látjuk!
       ]);
       if (recRes.status === 401) return forceLogout();
       
@@ -128,7 +127,7 @@ function App() {
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
       });
     } catch (e) {
-      console.error("Hiba a bejelentkezés feldolgozásakor", e);
+      console.error("Hiba a bejelentkezés", e);
       forceLogout();
     }
   };
@@ -156,9 +155,7 @@ function App() {
 
   useEffect(() => {
     if (selectedAssetId !== 'all') {
-      // Csak akkor változtassuk a targetAssetId-t, ha NEM szerkesztünk éppen
       if (!editingRecordId) setTargetAssetId(selectedAssetId);
-      
       const asset = assets.find(a => String(a.Id) === String(selectedAssetId));
       if (asset?.Category === 'car') {
         if (categories.find(c => c.Name === 'Üzemanyag')) setFilter('Üzemanyag');
@@ -175,7 +172,6 @@ function App() {
     const allowed = getAllowedTypes(targetAssetId);
     const currentCat = categories.find(c => c.Name === type);
     
-    // Ha nem szerkesztési módban vagyunk, okosan átkapcsoljuk a tabokat
     if (!editingRecordId) {
       if (asset?.Category === 'car' || currentCat?.Type === 'invoice_only' || currentCat?.Type === 'income') {
         setRecordMode('invoice');
@@ -364,7 +360,7 @@ function App() {
         setShowAssetManager(false);
         fetchAll(user.token);
       } else {
-        alert("Szerver hiba történt a mentés során. Ellenőrizd a backendet!");
+        alert("Hiba történt.");
       }
     } catch (error) {
       alert("Hálózati hiba!");
@@ -372,7 +368,7 @@ function App() {
   };
 
   const handleCategorySave = async () => {
-    if (!isAdmin || !newCategory.name) return;
+    if (!newCategory.name) return;
     const url = editingCategoryId ? `${BACKEND_URL}/api/categories/${editingCategoryId}` : `${BACKEND_URL}/api/categories`;
     const res = await fetch(url, {
       method: editingCategoryId ? 'PUT' : 'POST',
@@ -381,23 +377,29 @@ function App() {
     });
     if (res.ok) {
       setEditingCategoryId(null);
-      setNewCategory({ name: '', icon: '📄', type: 'both' });
+      setNewCategory({ name: '', icon: '📄', type: 'both', isPublic: false });
       fetchAll(user.token);
+    } else {
+      const data = await res.json();
+      alert(data.error || "Hiba történt");
     }
   };
 
   const handleCategoryDelete = async (id: number) => {
-    if (!isAdmin || !window.confirm("Biztosan törlöd a kategóriát?")) return;
+    if (!window.confirm("Biztosan törlöd a kategóriát? A hozzá tartozó adatoknál is gondot okozhat!")) return;
     const res = await fetch(`${BACKEND_URL}/api/categories/${id}`, {
       method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` }
     });
     if (res.ok) fetchAll(user.token);
+    else {
+      const data = await res.json();
+      alert(data.error || "Hiba történt");
+    }
   };
 
-  // --- ÚJ: Rekord módosítás betöltése ---
   const handleEditRecord = (item: any) => {
     setEditingRecordId(item.Id || item.id);
-    setEditingRecordLType(item.lType); // Ebből tudjuk, hogy MELYIK endpointot hívjuk a módosításkor
+    setEditingRecordLType(item.lType);
     setRecordMode(item.lType);
     setTargetAssetId(String(item.AssetId));
     setType(item.Type);
@@ -407,7 +409,6 @@ function App() {
     if (item.lType === 'meter') setMeterDate(dateStr);
     else setInvoiceDate(dateStr);
 
-    // Kényelmi funkció: visszagörgetünk a form-hoz
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -432,7 +433,6 @@ function App() {
       assetId: parseInt(targetAssetId) 
     };
 
-    // Ha szerkesztünk, a megfelelő endpointra küldjük a PUT kérést
     const isEditing = editingRecordId !== null;
     const endpoint = isEditing 
         ? `/api/${editingRecordLType === 'meter' ? 'records' : 'invoices'}/${editingRecordId}`
@@ -518,7 +518,8 @@ function App() {
           <h1 className="logo">Rezsiapp 2.0</h1>
           {user && (
             <div className="user-info">
-              {isAdmin && !isReadOnly && (
+              {/* Most már MINDENKI láthatja a Kategóriákat, aki nem Read-Only módú vendég */}
+              {!isReadOnly && (
                 <button className="btn-asset-toggle" onClick={() => { setShowCategoryManager(!showCategoryManager); setShowAssetManager(false); }}>⚙️ Kategóriák</button>
               )}
               {!isReadOnly && (
@@ -530,8 +531,7 @@ function App() {
           )}
         </header>
 
-        {/* ... Asset és Category manager kódja marad ... */}
-        {showCategoryManager && isAdmin && !isReadOnly && (
+        {showCategoryManager && !isReadOnly && (
           <section className="card asset-manager-card">
             <h3>Kategóriák karbantartása</h3>
             <div className="asset-form">
@@ -542,24 +542,47 @@ function App() {
                 <option value="invoice_only">Csak 💰 Számla (Kiadás)</option>
                 <option value="income">💵 Bevétel (Csak Számla)</option>
               </select>
+              
+              {/* Csak az admin tudja kiválasztani, hogy publikus legyen-e. Amúgy automatikusan privát. */}
+              {isAdmin && (
+                <label style={{color: '#94a3b8', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '5px'}}>
+                  <input type="checkbox" checked={newCategory.isPublic} onChange={(e) => setNewCategory({...newCategory, isPublic: e.target.checked})} />
+                  Publikus (Mindenki látja)
+                </label>
+              )}
+
               <div className="asset-form-buttons">
                 <button className="btn-primary" onClick={handleCategorySave}>Mentés</button>
-                {editingCategoryId && <button className="btn-secondary" onClick={() => setEditingCategoryId(null)}>Mégse</button>}
+                {editingCategoryId && <button className="btn-secondary" onClick={() => { setEditingCategoryId(null); setNewCategory({ name: '', icon: '📄', type: 'both', isPublic: false }); }}>Mégse</button>}
               </div>
             </div>
+            
             <div className="asset-list">
-              {categories.map((c: any) => (
-                <div key={c.Id} className="asset-item">
-                  <div className="asset-item-info">
-                    <span>{c.Icon} {c.Name}</span> 
-                    <small>({c.Type === 'both' ? 'Mindkettő' : c.Type === 'income' ? 'Bevétel' : 'Csak számla'})</small>
+              {categories.map((c: any) => {
+                const isPublicCat = c.UserId === null;
+                const canEdit = !isPublicCat || isAdmin; // Egy sima user csak a sajátját (nem publikusat) szerkesztheti
+
+                return (
+                  <div key={c.Id} className="asset-item">
+                    <div className="asset-item-info">
+                      <span>{c.Icon} {c.Name} {isPublicCat ? '🌐' : '🔒'}</span> 
+                      <small>
+                        ({c.Type === 'both' ? 'Mindkettő' : c.Type === 'income' ? 'Bevétel' : 'Csak számla'})
+                        {!isPublicCat && <span style={{color: '#fbbf24', marginLeft: '5px'}}>• Privát</span>}
+                      </small>
+                    </div>
+                    {canEdit && (
+                      <div>
+                        <button className="btn-edit-small" onClick={() => { 
+                          setEditingCategoryId(c.Id); 
+                          setNewCategory({ name: c.Name, icon: c.Icon, type: c.Type, isPublic: isPublicCat }); 
+                        }}>✏️</button>
+                        <button className="btn-edit-small" onClick={() => handleCategoryDelete(c.Id)}>❌</button>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <button className="btn-edit-small" onClick={() => { setEditingCategoryId(c.Id); setNewCategory({ name: c.Name, icon: c.Icon, type: c.Type }); }}>✏️</button>
-                    <button className="btn-edit-small" onClick={() => handleCategoryDelete(c.Id)}>❌</button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </section>
         )}
@@ -661,7 +684,6 @@ function App() {
 
             {!isReadOnly && (
               <section className="card record-card">
-                {/* Ha szerkesztünk, a fejléc mutatja, hogy épp módosítunk */}
                 {editingRecordId && <div style={{color: '#fbbf24', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '10px'}}>✏️ Adat szerkesztése folyamatban...</div>}
                 
                 <div className="record-type-toggle">
@@ -815,7 +837,6 @@ function App() {
           </>
       ) : (
           <div className="login-container">
-             {/* ... Login UI marad ... */}
             <div className="login-content">
               <h1 className="login-title">Üdvözöl a <span className="highlight">Rezsiapp 2.0</span></h1>
               <p className="login-subtitle">A legkényelmesebb módja a háztartási kiadások, mérőóra állások és az autód költségeinek nyomon követésére.</p>
