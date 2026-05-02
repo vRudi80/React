@@ -49,7 +49,11 @@ function App() {
   const [filter, setFilter] = useState('Összes');
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('cost');
-  const [chartRange, setChartRange] = useState<number | 'all'>(12); // <-- ÚJ: Grafikon tartomány szűrő
+  
+  // --- ÚJ SZŰRŐ ÁLLAPOTOK ---
+  const [chartRange, setChartRange] = useState<number | 'all' | 'custom'>(12); 
+  const [customStartDate, setCustomStartDate] = useState<string>('2024-01');
+  const [customEndDate, setCustomEndDate] = useState<string>(new Date().toISOString().substring(0, 7));
 
   const isAdmin = user && ADMIN_EMAILS.includes(user.email);
   const isReadOnly = viewingUserId !== null && viewingUserId !== user?.sub;
@@ -173,7 +177,7 @@ function App() {
     if (allowed.length > 0 && !allowed.includes(type)) setType(allowed[0]);
   }, [targetAssetId, type, assets, categories]);
 
-  // --- ÚJ GRAFIKON LOGIKA (Kiadás és Bevétel külön oszlopban) ---
+  // --- ÚJ GRAFIKON LOGIKA ---
   const chartData = useMemo(() => {
     const dataMap: { [key: string]: any } = {};
     const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
@@ -226,17 +230,29 @@ function App() {
       });
     }
     
-    // --- ÚJ LOGIKA A TARTOMÁNY SZŰRÉSÉRE ---
+    // --- TARTOMÁNY SZŰRÉSE ---
     const sortedData = Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
     
+    // Ha egyedi tartomány van kiválasztva
+    if (chartRange === 'custom') {
+      return sortedData.filter((item: any) => {
+        const itemDate = item.label; // "YYYY-MM" vagy "YYYY"
+        const start = viewMode === 'annual' ? customStartDate.substring(0, 4) : customStartDate;
+        const end = viewMode === 'annual' ? customEndDate.substring(0, 4) : customEndDate;
+        
+        return itemDate >= (start || '0000') && itemDate <= (end || '9999');
+      });
+    }
+
+    // Ha fix hónap van megadva és havi nézetben vagyunk
     if (viewMode === 'monthly' && chartRange !== 'all') {
-      return sortedData.slice(-chartRange);
+      return sortedData.slice(-chartRange as number);
     }
     
     return sortedData;
-  }, [records, invoices, assets, filter, displayMode, viewMode, selectedAssetId, categories, chartRange]); // <-- chartRange hozzáadva a deps-hez
+  }, [records, invoices, assets, filter, displayMode, viewMode, selectedAssetId, categories, chartRange, customStartDate, customEndDate]);
 
-  // --- OKOS TOOLTIP (Szétbontja a kiadást és bevételt) ---
+  // --- OKOS TOOLTIP ---
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       const unit = displayMode === 'cost' ? 'Ft' : '';
@@ -259,7 +275,6 @@ function App() {
         );
       }
 
-      // Költség nézet esetén szétválogatjuk a bevételeket és kiadásokat
       const expenses = payload.filter((p: any) => !p.dataKey.endsWith('_income'));
       const incomes = payload.filter((p: any) => p.dataKey.endsWith('_income'));
       
@@ -615,31 +630,52 @@ function App() {
                 <button className={displayMode === 'usage' ? 'active' : ''} disabled={categories.find(c => c.Name === filter)?.Type === 'invoice_only' || categories.find(c => c.Name === filter)?.Type === 'income' || filter === 'Összes'} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
                 <button className={displayMode === 'cost' ? 'active' : ''} onClick={() => setDisplayMode('cost')}>Költség</button>
               </div>
-              <div className="view-toggle">
+              
+              {/* --- MÓDOSÍTOTT VIEW TOGGLE A DÁTUMVÁLASZTÓKKAL --- */}
+              <div className="view-toggle" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
                 <button className={viewMode === 'annual' ? 'active' : ''} onClick={() => setViewMode('annual')}>Éves</button>
                 
-                {/* --- ÚJ: Dátum tartomány választó --- */}
-                {viewMode === 'monthly' && (
-                  <select 
-                    value={chartRange} 
-                    onChange={(e) => setChartRange(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-                    style={{ 
-                      marginLeft: '8px', 
-                      padding: '6px 12px', 
-                      borderRadius: '20px', 
-                      background: '#1e293b', 
-                      color: '#94a3b8', 
-                      border: '1px solid #334155',
-                      cursor: 'pointer',
-                      outline: 'none'
-                    }}
-                  >
-                    <option value={6}>Utolsó 6 hónap</option>
-                    <option value={12}>Utolsó 12 hónap</option>
-                    <option value={24}>Utolsó 24 hónap</option>
-                    <option value="all">Összes mutatása</option>
-                  </select>
+                <select 
+                  value={chartRange} 
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setChartRange(val === 'all' || val === 'custom' ? val : parseInt(val));
+                  }}
+                  style={{ 
+                    padding: '6px 12px', 
+                    borderRadius: '20px', 
+                    background: '#1e293b', 
+                    color: '#94a3b8', 
+                    border: '1px solid #334155',
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                >
+                  {viewMode === 'monthly' && <option value={6}>Utolsó 6 hónap</option>}
+                  {viewMode === 'monthly' && <option value={12}>Utolsó 12 hónap</option>}
+                  {viewMode === 'monthly' && <option value={24}>Utolsó 24 hónap</option>}
+                  <option value="all">Összes mutatása</option>
+                  <option value="custom">Egyedi tartomány...</option>
+                </select>
+
+                {/* Egyedi dátumválasztók */}
+                {chartRange === 'custom' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <input 
+                      type="month" 
+                      value={customStartDate} 
+                      onChange={(e) => setCustomStartDate(e.target.value)} 
+                      style={{ padding: '4px 8px', borderRadius: '15px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', outline: 'none', colorScheme: 'dark' }}
+                    />
+                    <span style={{color: '#94a3b8'}}>-</span>
+                    <input 
+                      type="month" 
+                      value={customEndDate} 
+                      onChange={(e) => setCustomEndDate(e.target.value)} 
+                      style={{ padding: '4px 8px', borderRadius: '15px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', outline: 'none', colorScheme: 'dark' }}
+                    />
+                  </div>
                 )}
               </div>
             </div>
@@ -677,7 +713,7 @@ function App() {
                       })}
                     </BarChart>
                   </ResponsiveContainer>
-                ) : <div className="no-data-msg">Nincs adat</div>}
+                ) : <div className="no-data-msg">Nincs adat a kiválasztott időszakban</div>}
               </div>
             </section>
 
