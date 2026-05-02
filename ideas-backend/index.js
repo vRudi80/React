@@ -11,7 +11,7 @@ app.use(express.json());
 const GOOGLE_CLIENT_ID = "197361744572-ih728hq5jft3fqfd1esvktvrd8i97kcp.apps.googleusercontent.com";
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-// ⚠️ IDE ÍRD BE A SAJÁT E-MAIL CÍMEDET, AKIVEL BEJELENTKEZEL!
+// ⚠️ IDE ÍRD BE A SAJÁT E-MAIL CÍMEDET!
 const ADMIN_EMAILS = ['kovari.rudolf@gmail.com']; 
 
 const pool = mysql.createPool({
@@ -37,13 +37,6 @@ async function verifyUser(req, res, next) {
     } catch (err) { res.status(401).send('Érvénytelen munkamenet'); }
 }
 
-function requireAdmin(req, res, next) {
-    if (!ADMIN_EMAILS.includes(req.userEmail)) {
-        return res.status(403).json({ error: 'Nincs adminisztrátori jogosultságod!' });
-    }
-    next();
-}
-
 async function canAccessData(requesterId, requesterEmail, targetUserId) {
     if (requesterId === targetUserId) return true;
     const [rows] = await pool.query('SELECT id FROM shares WHERE owner_id = ? AND shared_with_email = ?', [targetUserId, requesterEmail]);
@@ -66,32 +59,60 @@ app.post('/api/login-sync', verifyUser, async (req, res) => {
     }
 });
 
-// --- KATEGÓRIÁK KEZELÉSE ---
+// --- KATEGÓRIÁK KEZELÉSE (Publikus + Privát) ---
 app.get('/api/categories', verifyUser, async (req, res) => {
+    const targetUserId = req.query.userId || req.userId;
+    if (!(await canAccessData(req.userId, req.userEmail, targetUserId))) return res.status(403).json({ error: "Nincs jogosultság" });
     try {
-        const [rows] = await pool.query('SELECT * FROM categories ORDER BY Id ASC');
+        // Lekérjük a publikusakat (UserId IS NULL) és a cél user privát kategóriáit
+        const [rows] = await pool.query('SELECT * FROM categories WHERE UserId IS NULL OR UserId = ? ORDER BY Id ASC', [targetUserId]);
         res.json(rows);
     } catch (err) { res.status(500).json({ error: 'DB hiba' }); }
 });
 
-app.post('/api/categories', verifyUser, requireAdmin, async (req, res) => {
-    const { name, icon, type } = req.body;
+app.post('/api/categories', verifyUser, async (req, res) => {
+    const { name, icon, type, isPublic } = req.body;
+    const isAdmin = ADMIN_EMAILS.includes(req.userEmail);
+    
+    // Csak admin csinálhat publikus kategóriát, a többieké mindig privát
+    const finalUserId = (isPublic && isAdmin) ? null : req.userId;
+
     try {
-        await pool.query('INSERT INTO categories (Name, Icon, Type) VALUES (?, ?, ?)', [name, icon, type]);
+        await pool.query('INSERT INTO categories (Name, Icon, Type, UserId) VALUES (?, ?, ?, ?)', [name, icon, type, finalUserId]);
         res.status(201).json({ success: true });
     } catch (err) { res.status(500).json({ error: 'Hiba' }); }
 });
 
-app.put('/api/categories/:id', verifyUser, requireAdmin, async (req, res) => {
-    const { name, icon, type } = req.body;
+app.put('/api/categories/:id', verifyUser, async (req, res) => {
+    const { name, icon, type, isPublic } = req.body;
+    const isAdmin = ADMIN_EMAILS.includes(req.userEmail);
+
     try {
-        await pool.query('UPDATE categories SET Name = ?, Icon = ?, Type = ? WHERE Id = ?', [name, icon, type, req.params.id]);
+        const [cat] = await pool.query('SELECT UserId FROM categories WHERE Id = ?', [req.params.id]);
+        if (cat.length === 0) return res.status(404).json({error: 'Nincs ilyen'});
+        
+        const isOwner = cat[0].UserId === req.userId;
+        const isPublicCat = cat[0].UserId === null;
+
+        if (!isOwner && !(isAdmin && isPublicCat)) return res.status(403).json({error: 'Nincs jogod ehhez a kategóriához!'});
+
+        const finalUserId = (isPublic && isAdmin) ? null : req.userId;
+        await pool.query('UPDATE categories SET Name = ?, Icon = ?, Type = ?, UserId = ? WHERE Id = ?', [name, icon, type, finalUserId, req.params.id]);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: 'Hiba' }); }
 });
 
-app.delete('/api/categories/:id', verifyUser, requireAdmin, async (req, res) => {
+app.delete('/api/categories/:id', verifyUser, async (req, res) => {
+    const isAdmin = ADMIN_EMAILS.includes(req.userEmail);
     try {
+        const [cat] = await pool.query('SELECT UserId FROM categories WHERE Id = ?', [req.params.id]);
+        if (cat.length === 0) return res.status(404).json({error: 'Nincs ilyen'});
+        
+        const isOwner = cat[0].UserId === req.userId;
+        const isPublicCat = cat[0].UserId === null;
+
+        if (!isOwner && !(isAdmin && isPublicCat)) return res.status(403).json({error: 'Nincs jogod ehhez a kategóriához!'});
+
         await pool.query('DELETE FROM categories WHERE Id = ?', [req.params.id]);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: 'Hiba' }); }
@@ -208,7 +229,6 @@ app.post('/api/invoices', verifyUser, async (req, res) => {
     } catch (err) { res.status(500).json({ error: 'Hiba' }); }
 });
 
-// --- ÚJ: Óraállás MÓDOSÍTÁSA ---
 app.put('/api/records/:id', verifyUser, async (req, res) => {
     const { type, value, date, assetId } = req.body;
     try {
@@ -217,16 +237,12 @@ app.put('/api/records/:id', verifyUser, async (req, res) => {
             [type, value, date, assetId, req.params.id, req.userId]
         );
         if (result.affectedRows === 0) {
-            return res.status(404).json({ error: 'Rekord nem található vagy nincs jogosultságod módosítani.' });
+            return res.status(404).json({ error: 'Rekord nem található vagy nincs jogosultságod.' });
         }
         res.json({ success: true });
-    } catch (err) { 
-        console.error("Hiba óraállás módosításakor:", err);
-        res.status(500).json({ error: 'Hiba' }); 
-    }
+    } catch (err) { res.status(500).json({ error: 'Hiba' }); }
 });
 
-// --- ÚJ: Számla / Bevétel MÓDOSÍTÁSA ---
 app.put('/api/invoices/:id', verifyUser, async (req, res) => {
     const { type, amount, date, assetId } = req.body;
     try {
@@ -235,13 +251,10 @@ app.put('/api/invoices/:id', verifyUser, async (req, res) => {
             [type, amount, date, assetId, req.params.id, req.userId]
         );
         if (result.affectedRows === 0) {
-            return res.status(404).json({ error: 'Számla nem található vagy nincs jogosultságod módosítani.' });
+            return res.status(404).json({ error: 'Számla nem található vagy nincs jogosultságod.' });
         }
         res.json({ success: true });
-    } catch (err) { 
-        console.error("Hiba számla módosításakor:", err);
-        res.status(500).json({ error: 'Hiba' }); 
-    }
+    } catch (err) { res.status(500).json({ error: 'Hiba' }); }
 });
 
 app.delete('/api/records/:id', verifyUser, async (req, res) => {
