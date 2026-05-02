@@ -50,7 +50,23 @@ async function canAccessData(requesterId, requesterEmail, targetUserId) {
     return rows.length > 0;
 }
 
-// --- KATEGÓRIÁK KEZELÉSE (ÚJ) ---
+// --- BELÉPÉS NAPLÓZÁSA ---
+app.post('/api/login-sync', verifyUser, async (req, res) => {
+    try {
+        await pool.query(
+            `INSERT INTO users (google_id, email, last_login) 
+             VALUES (?, ?, NOW()) 
+             ON DUPLICATE KEY UPDATE last_login = NOW(), email = VALUES(email)`,
+            [req.userId, req.userEmail]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Login log hiba:", err);
+        res.status(500).json({ error: 'Nem sikerült naplózni a belépést' });
+    }
+});
+
+// --- KATEGÓRIÁK KEZELÉSE ---
 app.get('/api/categories', verifyUser, async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM categories ORDER BY Id ASC');
@@ -81,7 +97,83 @@ app.delete('/api/categories/:id', verifyUser, requireAdmin, async (req, res) => 
     } catch (err) { res.status(500).json({ error: 'Hiba' }); }
 });
 
-// --- TÖBBI API ÚTVONAL (RECORDS, INVOICES, ASSETS, SHARES) ---
+// --- ESZKÖZÖK (ASSETS) KEZELÉSE ---
+app.get('/api/assets', verifyUser, async (req, res) => {
+    const targetUserId = req.query.userId || req.userId;
+    if (!(await canAccessData(req.userId, req.userEmail, targetUserId))) return res.status(403).json({ error: "Nincs jogosultság" });
+    try {
+        const [rows] = await pool.query('SELECT * FROM assets WHERE UserId = ?', [targetUserId]);
+        res.json(rows);
+    } catch (err) { res.status(500).json({ error: 'DB hiba' }); }
+});
+
+app.post('/api/assets', verifyUser, async (req, res) => {
+    const { category, friendlyName, city, street, houseNumber, plateNumber, fuelType, area } = req.body;
+    try {
+        const [result] = await pool.query(
+            `INSERT INTO assets (UserId, Category, FriendlyName, City, Street, HouseNumber, PlateNumber, FuelType, Area) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.userId, category, friendlyName, city || null, street || null, houseNumber || null, plateNumber || null, fuelType || 'Benzin', area || null]
+        );
+        res.status(201).json({ success: true, id: result.insertId });
+    } catch (err) {
+        console.error("SQL hiba az eszköz mentésekor:", err);
+        res.status(500).json({ error: 'Hiba a mentésnél' });
+    }
+});
+
+app.put('/api/assets/:id', verifyUser, async (req, res) => {
+    const { friendlyName, category, city, street, plateNumber, area } = req.body;
+    try {
+        await pool.query(
+            `UPDATE assets 
+             SET FriendlyName = ?, Category = ?, City = ?, Street = ?, PlateNumber = ?, Area = ? 
+             WHERE Id = ? AND UserId = ?`,
+            [friendlyName, category, city || null, street || null, plateNumber || null, area || null, req.params.id, req.userId]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Hiba a módosításnál' });
+    }
+});
+
+app.delete('/api/assets/:id', verifyUser, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM assets WHERE Id = ? AND UserId = ?', [req.params.id, req.userId]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: 'Hiba' }); }
+});
+
+// --- MEGOSZTÁSOK (SHARES) KEZELÉSE ---
+app.post('/api/shares', verifyUser, async (req, res) => {
+    try {
+        await pool.query('INSERT INTO shares (owner_id, owner_email, shared_with_email) VALUES (?, ?, ?)', [req.userId, req.userEmail, req.body.sharedWithEmail]);
+        res.status(201).json({ success: true });
+    } catch (err) { res.status(500).json({ error: 'Hiba' }); }
+});
+
+app.get('/api/shares/me', verifyUser, async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT DISTINCT owner_id, owner_email FROM shares WHERE shared_with_email = ?', [req.userEmail]);
+        res.json(rows);
+    } catch (err) { res.status(500).json({ error: 'Hiba' }); }
+});
+
+app.get('/api/shares/owned', verifyUser, async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM shares WHERE owner_id = ?', [req.userId]);
+        res.json(rows);
+    } catch (err) { res.status(500).json({ error: 'Hiba' }); }
+});
+
+app.delete('/api/shares/:id', verifyUser, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM shares WHERE id = ? AND owner_id = ?', [req.params.id, req.userId]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: 'Hiba' }); }
+});
+
+// --- REKORDOK ÉS SZÁMLÁK KEZELÉSE ---
 app.get('/api/records', verifyUser, async (req, res) => {
     const targetUserId = req.query.userId || req.userId;
     if (!(await canAccessData(req.userId, req.userEmail, targetUserId))) return res.status(403).json({ error: "Nincs jogosultság" });
@@ -98,29 +190,6 @@ app.get('/api/invoices', verifyUser, async (req, res) => {
         const [rows] = await pool.query('SELECT * FROM invoices WHERE UserId = ? ORDER BY Month DESC', [targetUserId]);
         res.json(rows);
     } catch (err) { res.status(500).json({ error: 'DB hiba' }); }
-});
-
-app.get('/api/assets', verifyUser, async (req, res) => {
-    const targetUserId = req.query.userId || req.userId;
-    if (!(await canAccessData(req.userId, req.userEmail, targetUserId))) return res.status(403).json({ error: "Nincs jogosultság" });
-    try {
-        const [rows] = await pool.query('SELECT * FROM assets WHERE UserId = ?', [targetUserId]);
-        res.json(rows);
-    } catch (err) { res.status(500).json({ error: 'DB hiba' }); }
-});
-
-app.post('/api/shares', verifyUser, async (req, res) => {
-    try {
-        await pool.query('INSERT INTO shares (owner_id, owner_email, shared_with_email) VALUES (?, ?, ?)', [req.userId, req.userEmail, req.body.sharedWithEmail]);
-        res.status(201).json({ success: true });
-    } catch (err) { res.status(500).json({ error: 'Hiba' }); }
-});
-
-app.get('/api/shares/me', verifyUser, async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT DISTINCT owner_id, owner_email FROM shares WHERE shared_with_email = ?', [req.userEmail]);
-        res.json(rows);
-    } catch (err) { res.status(500).json({ error: 'Hiba' }); }
 });
 
 app.post('/api/records', verifyUser, async (req, res) => {
