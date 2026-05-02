@@ -39,6 +39,10 @@ function App() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [shareEmail, setShareEmail] = useState('');
   
+  // --- ÚJ: Állapotok a meglévő rekordok szerkesztéséhez ---
+  const [editingRecordId, setEditingRecordId] = useState<number | string | null>(null);
+  const [editingRecordLType, setEditingRecordLType] = useState<'meter' | 'invoice' | null>(null);
+  
   const [newAsset, setNewAsset] = useState({ 
     category: 'property', friendlyName: '', city: '', street: '', 
     houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' 
@@ -152,7 +156,9 @@ function App() {
 
   useEffect(() => {
     if (selectedAssetId !== 'all') {
-      setTargetAssetId(selectedAssetId);
+      // Csak akkor változtassuk a targetAssetId-t, ha NEM szerkesztünk éppen
+      if (!editingRecordId) setTargetAssetId(selectedAssetId);
+      
       const asset = assets.find(a => String(a.Id) === String(selectedAssetId));
       if (asset?.Category === 'car') {
         if (categories.find(c => c.Name === 'Üzemanyag')) setFilter('Üzemanyag');
@@ -162,21 +168,23 @@ function App() {
       setFilter('Összes');
       setDisplayMode('cost');
     }
-  }, [selectedAssetId, assets.length, categories]);
+  }, [selectedAssetId, assets.length, categories, editingRecordId]);
 
   useEffect(() => {
     const asset = assets.find(a => String(a.Id) === String(targetAssetId));
     const allowed = getAllowedTypes(targetAssetId);
     const currentCat = categories.find(c => c.Name === type);
     
-    if (asset?.Category === 'car' || currentCat?.Type === 'invoice_only' || currentCat?.Type === 'income') {
-      setRecordMode('invoice');
+    // Ha nem szerkesztési módban vagyunk, okosan átkapcsoljuk a tabokat
+    if (!editingRecordId) {
+      if (asset?.Category === 'car' || currentCat?.Type === 'invoice_only' || currentCat?.Type === 'income') {
+        setRecordMode('invoice');
+      }
     }
     
     if (allowed.length > 0 && !allowed.includes(type)) setType(allowed[0]);
-  }, [targetAssetId, type, assets, categories]);
+  }, [targetAssetId, type, assets, categories, editingRecordId]);
 
-  // --- ÚJ GRAFIKON LOGIKA ---
   const chartData = useMemo(() => {
     const dataMap: { [key: string]: any } = {};
     const fRec = records.filter((r: any) => selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId));
@@ -185,7 +193,7 @@ function App() {
     if (displayMode === 'usage') {
       const assetsMap: { [key: string]: any[] } = {};
       fRec.filter((r: any) => {
-        if (filter === 'Összes' || filter === 'Összes kiadás') return true; // Usage rekordokban eleve nincs bevétel
+        if (filter === 'Összes' || filter === 'Összes kiadás') return true;
         return r.Type === filter;
       }).forEach((r: any) => {
         if (!assetsMap[r.AssetId]) assetsMap[r.AssetId] = [];
@@ -215,7 +223,6 @@ function App() {
       fInv.filter((inv: any) => {
         if (filter === 'Összes') return true;
         if (filter === 'Összes kiadás') {
-          // Ha 'Összes kiadás' van kiválasztva, kiszűrjük a bevételeket
           const isInc = categories.find(c => c.Name === inv.Type)?.Type === 'income';
           return !isInc;
         }
@@ -240,7 +247,6 @@ function App() {
       });
     }
     
-    // --- TARTOMÁNY SZŰRÉSE ---
     const sortedData = Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
     
     if (chartRange === 'custom') {
@@ -259,7 +265,6 @@ function App() {
     return sortedData;
   }, [records, invoices, assets, filter, displayMode, viewMode, selectedAssetId, categories, chartRange, customStartDate, customEndDate]);
 
-  // --- OKOS TOOLTIP ---
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       const unit = displayMode === 'cost' ? 'Ft' : '';
@@ -389,6 +394,29 @@ function App() {
     if (res.ok) fetchAll(user.token);
   };
 
+  // --- ÚJ: Rekord módosítás betöltése ---
+  const handleEditRecord = (item: any) => {
+    setEditingRecordId(item.Id || item.id);
+    setEditingRecordLType(item.lType); // Ebből tudjuk, hogy MELYIK endpointot hívjuk a módosításkor
+    setRecordMode(item.lType);
+    setTargetAssetId(String(item.AssetId));
+    setType(item.Type);
+    setValue(String(item.Value || item.Amount || ''));
+    
+    const dateStr = String(item.d).substring(0, 10);
+    if (item.lType === 'meter') setMeterDate(dateStr);
+    else setInvoiceDate(dateStr);
+
+    // Kényelmi funkció: visszagörgetünk a form-hoz
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelRecordEdit = () => {
+    setEditingRecordId(null);
+    setEditingRecordLType(null);
+    setValue('');
+  };
+
   const handleSave = async () => {
     if (!targetAssetId || targetAssetId === 'all') return alert("Kérlek, válassz ki egy konkrét eszközt a mentéshez!");
     if (!value) return alert("Kérlek, add meg az értéket!");
@@ -404,15 +432,27 @@ function App() {
       assetId: parseInt(targetAssetId) 
     };
 
-    const endpoint = (recordMode === 'invoice' || isInvoiceType) ? '/api/invoices' : '/api/records';
+    // Ha szerkesztünk, a megfelelő endpointra küldjük a PUT kérést
+    const isEditing = editingRecordId !== null;
+    const endpoint = isEditing 
+        ? `/api/${editingRecordLType === 'meter' ? 'records' : 'invoices'}/${editingRecordId}`
+        : ((recordMode === 'invoice' || isInvoiceType) ? '/api/invoices' : '/api/records');
+
+    const method = isEditing ? 'PUT' : 'POST';
+
     const res = await fetch(`${BACKEND_URL}${endpoint}`, {
-      method: 'POST',
+      method: method,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
       body: JSON.stringify(body)
     });
     
-    if (res.ok) { setValue(''); fetchAll(user.token, viewingUserId!); } 
-    else { alert("Hiba történt a mentés során."); }
+    if (res.ok) { 
+      setValue(''); 
+      setEditingRecordId(null);
+      setEditingRecordLType(null);
+      fetchAll(user.token, viewingUserId!); 
+    } 
+    else { alert("Hiba történt a mentés/módosítás során."); }
   };
 
   const handleShare = async () => {
@@ -444,7 +484,7 @@ function App() {
   const getColor = (t: string = filter) => {
     if (displayMode === 'cost' && t !== 'Összes' && t !== 'Összes kiadás') return '#10b981';
     if (t === 'Összes') return '#6366f1';
-    if (t === 'Összes kiadás') return '#f43f5e'; // Enyhén pirosas szín a kiadásoknak
+    if (t === 'Összes kiadás') return '#f43f5e';
     switch(t) {
       case 'Áram': return '#fbbf24';
       case 'Víz': return '#38bdf8';
@@ -490,6 +530,7 @@ function App() {
           )}
         </header>
 
+        {/* ... Asset és Category manager kódja marad ... */}
         {showCategoryManager && isAdmin && !isReadOnly && (
           <section className="card asset-manager-card">
             <h3>Kategóriák karbantartása</h3>
@@ -620,9 +661,12 @@ function App() {
 
             {!isReadOnly && (
               <section className="card record-card">
+                {/* Ha szerkesztünk, a fejléc mutatja, hogy épp módosítunk */}
+                {editingRecordId && <div style={{color: '#fbbf24', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '10px'}}>✏️ Adat szerkesztése folyamatban...</div>}
+                
                 <div className="record-type-toggle">
-                  <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')} disabled={assets.find(a => String(a.Id) === String(targetAssetId))?.Category === 'car' || categories.find(c => c.Name === type)?.Type === 'invoice_only' || categories.find(c => c.Name === type)?.Type === 'income'}>📟 Óraállás</button>
-                  <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')}>💰 Számla / Bevétel</button>
+                  <button className={recordMode === 'meter' ? 'active' : ''} onClick={() => setRecordMode('meter')} disabled={editingRecordId !== null || assets.find(a => String(a.Id) === String(targetAssetId))?.Category === 'car' || categories.find(c => c.Name === type)?.Type === 'invoice_only' || categories.find(c => c.Name === type)?.Type === 'income'}>📟 Óraállás</button>
+                  <button className={recordMode === 'invoice' ? 'active' : ''} onClick={() => setRecordMode('invoice')} disabled={editingRecordId !== null}>💰 Számla / Bevétel</button>
                 </div>
                 <div className="input-row">
                   <select value={targetAssetId} onChange={(e) => setTargetAssetId(e.target.value)}><option value="">Eszköz / Személy...</option>{assets.map((a: any) => (<option key={a.Id} value={a.Id}>{a.FriendlyName}</option>))}</select>
@@ -630,7 +674,15 @@ function App() {
                   <input type="date" value={recordMode === 'meter' ? meterDate : invoiceDate} onChange={(e) => recordMode === 'meter' ? setMeterDate(e.target.value) : setInvoiceDate(e.target.value)} />
                   <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Érték / Ft" />
                 </div>
-               <button className="btn-primary" onClick={handleSave} disabled={!targetAssetId || targetAssetId === 'all' || !value}>Adat mentése</button>
+                
+                <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                  <button className="btn-primary" onClick={handleSave} disabled={!targetAssetId || targetAssetId === 'all' || !value} style={{ flex: 1 }}>
+                    {editingRecordId ? 'Adat módosítása' : 'Adat mentése'}
+                  </button>
+                  {editingRecordId && (
+                    <button className="btn-secondary" onClick={cancelRecordEdit} style={{ background: 'transparent', border: '1px solid #475569', color: '#cbd5e1' }}>Mégse</button>
+                  )}
+                </div>
               </section>
             )}
 
@@ -678,7 +730,6 @@ function App() {
                   <option value="custom">Egyedi tartomány...</option>
                 </select>
 
-                {/* Egyedi dátumválasztók */}
                 {chartRange === 'custom' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <input 
@@ -710,15 +761,11 @@ function App() {
                       <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }} />
                       <Legend />
                       
-                      {/* Végigmegyünk az eszközökön, és létrehozzuk a kiadásokat, majd a bevételeket a grafikonban */}
                       {(selectedAssetId === 'all' ? assets : assets.filter(a => String(a.Id) === String(selectedAssetId))).map((asset, idx) => {
                         const color = selectedAssetId === 'all' ? ASSET_COLORS[idx % ASSET_COLORS.length] : getColor();
                         return (
                           <React.Fragment key={asset.Id}>
-                            {/* Kiadások Oszlopa */}
                             <Bar dataKey={asset.FriendlyName} stackId="expense" fill={color} />
-                            
-                            {/* Bevételek Oszlopa (ugyanaz a szín, de külön oszlop, átlátszósággal megjelölve) */}
                             <Bar 
                               dataKey={`${asset.FriendlyName}_income`} 
                               name={`${asset.FriendlyName} (Bevétel)`} 
@@ -754,7 +801,10 @@ function App() {
                           {isIncome ? '+' : ''}{(parseFloat(item.Value) || 0).toLocaleString()} {item.lType === 'meter' ? 'egység' : 'Ft'}
                         </span>
                         {!isReadOnly && (
-                          <button className="btn-delete" onClick={async () => { if(window.confirm("Törlöd?")) { await fetch(`${BACKEND_URL}/api/${item.lType === 'meter' ? 'records' : 'invoices'}/${item.Id || item.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } }); fetchAll(user.token); } }}>❌</button>
+                          <div style={{ display: 'flex', gap: '5px' }}>
+                            <button className="btn-edit" onClick={() => handleEditRecord(item)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', opacity: 0.7 }}>✏️</button>
+                            <button className="btn-delete" onClick={async () => { if(window.confirm("Törlöd?")) { await fetch(`${BACKEND_URL}/api/${item.lType === 'meter' ? 'records' : 'invoices'}/${item.Id || item.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } }); fetchAll(user.token); } }}>❌</button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -765,6 +815,7 @@ function App() {
           </>
       ) : (
           <div className="login-container">
+             {/* ... Login UI marad ... */}
             <div className="login-content">
               <h1 className="login-title">Üdvözöl a <span className="highlight">Rezsiapp 2.0</span></h1>
               <p className="login-subtitle">A legkényelmesebb módja a háztartási kiadások, mérőóra állások és az autód költségeinek nyomon követésére.</p>
