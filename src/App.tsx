@@ -50,7 +50,6 @@ function App() {
   const [viewMode, setViewMode] = useState('monthly'); 
   const [displayMode, setDisplayMode] = useState('cost');
   
-  // --- ÚJ SZŰRŐ ÁLLAPOTOK ---
   const [chartRange, setChartRange] = useState<number | 'all' | 'custom'>(12); 
   const [customStartDate, setCustomStartDate] = useState<string>('2024-01');
   const [customEndDate, setCustomEndDate] = useState<string>(new Date().toISOString().substring(0, 7));
@@ -185,7 +184,10 @@ function App() {
 
     if (displayMode === 'usage') {
       const assetsMap: { [key: string]: any[] } = {};
-      fRec.filter((r: any) => filter === 'Összes' ? true : r.Type === filter).forEach((r: any) => {
+      fRec.filter((r: any) => {
+        if (filter === 'Összes' || filter === 'Összes kiadás') return true; // Usage rekordokban eleve nincs bevétel
+        return r.Type === filter;
+      }).forEach((r: any) => {
         if (!assetsMap[r.AssetId]) assetsMap[r.AssetId] = [];
         assetsMap[r.AssetId].push(r);
       });
@@ -210,7 +212,15 @@ function App() {
       });
     } else {
       const keyLen = viewMode === 'monthly' ? 7 : 4;
-      fInv.filter((inv: any) => filter === 'Összes' ? true : inv.Type === filter).forEach((inv: any) => {
+      fInv.filter((inv: any) => {
+        if (filter === 'Összes') return true;
+        if (filter === 'Összes kiadás') {
+          // Ha 'Összes kiadás' van kiválasztva, kiszűrjük a bevételeket
+          const isInc = categories.find(c => c.Name === inv.Type)?.Type === 'income';
+          return !isInc;
+        }
+        return inv.Type === filter;
+      }).forEach((inv: any) => {
         const key = String(inv.Month || "").substring(0, keyLen);
         const asset = assets.find(a => String(a.Id) === String(inv.AssetId));
         const label = asset ? asset.FriendlyName : 'Egyéb';
@@ -233,18 +243,15 @@ function App() {
     // --- TARTOMÁNY SZŰRÉSE ---
     const sortedData = Object.values(dataMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
     
-    // Ha egyedi tartomány van kiválasztva
     if (chartRange === 'custom') {
       return sortedData.filter((item: any) => {
-        const itemDate = item.label; // "YYYY-MM" vagy "YYYY"
+        const itemDate = item.label; 
         const start = viewMode === 'annual' ? customStartDate.substring(0, 4) : customStartDate;
         const end = viewMode === 'annual' ? customEndDate.substring(0, 4) : customEndDate;
-        
         return itemDate >= (start || '0000') && itemDate <= (end || '9999');
       });
     }
 
-    // Ha fix hónap van megadva és havi nézetben vagyunk
     if (viewMode === 'monthly' && chartRange !== 'all') {
       return sortedData.slice(-chartRange as number);
     }
@@ -429,13 +436,15 @@ function App() {
 
   const getIcon = (t: string) => {
     if (t === 'Összes') return '📊';
+    if (t === 'Összes kiadás') return '📉';
     const cat = categories.find(c => c.Name === t);
     return cat ? cat.Icon : '📄';
   };
 
   const getColor = (t: string = filter) => {
-    if (displayMode === 'cost' && t !== 'Összes') return '#10b981';
+    if (displayMode === 'cost' && t !== 'Összes' && t !== 'Összes kiadás') return '#10b981';
     if (t === 'Összes') return '#6366f1';
+    if (t === 'Összes kiadás') return '#f43f5e'; // Enyhén pirosas szín a kiadásoknak
     switch(t) {
       case 'Áram': return '#fbbf24';
       case 'Víz': return '#38bdf8';
@@ -452,8 +461,14 @@ function App() {
   };
 
   const combinedList = [
-    ...(filter === 'Összes' ? [] : records.filter(r => (selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId)) && r.Type === filter).map(r => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
-    ...invoices.filter(i => (selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId)) && (filter === 'Összes' ? true : i.Type === filter)).map(i => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
+    ...(filter === 'Összes' || filter === 'Összes kiadás' ? [] : records.filter(r => (selectedAssetId === 'all' || String(r.AssetId) === String(selectedAssetId)) && r.Type === filter).map(r => ({ ...r, lType: 'meter', d: r.FormattedDate }))),
+    ...invoices.filter(i => {
+      const isAssetMatch = selectedAssetId === 'all' || String(i.AssetId) === String(selectedAssetId);
+      if (!isAssetMatch) return false;
+      if (filter === 'Összes') return true;
+      if (filter === 'Összes kiadás') return categories.find(c => c.Name === i.Type)?.Type !== 'income';
+      return i.Type === filter;
+    }).map(i => ({ ...i, lType: 'invoice', Value: i.Amount, d: i.Month }))
   ].sort((a, b) => new Date(b.d).getTime() - new Date(a.d).getTime());
 
   return (
@@ -624,14 +639,18 @@ function App() {
                 {categories.map(c => (
                   <button key={c.Id} className={filter === c.Name ? 'active' : ''} onClick={() => setFilter(c.Name)} style={filter === c.Name ? {backgroundColor: getColor(c.Name), borderColor: getColor(c.Name)} : {}}>{c.Icon} {c.Name}</button>
                 ))}
-                {displayMode === 'cost' && <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>{getIcon('Összes')} Összes</button>}
+                {displayMode === 'cost' && (
+                  <>
+                    <button className={filter === 'Összes kiadás' ? 'active' : ''} onClick={() => setFilter('Összes kiadás')} style={{backgroundColor: filter === 'Összes kiadás' ? getColor('Összes kiadás') : ''}}>{getIcon('Összes kiadás')} Összes kiadás</button>
+                    <button className={filter === 'Összes' ? 'active' : ''} onClick={() => setFilter('Összes')} style={{backgroundColor: filter === 'Összes' ? getColor('Összes') : ''}}>{getIcon('Összes')} Összes (+Bevétel)</button>
+                  </>
+                )}
               </div>
               <div className="mode-toggle">
-                <button className={displayMode === 'usage' ? 'active' : ''} disabled={categories.find(c => c.Name === filter)?.Type === 'invoice_only' || categories.find(c => c.Name === filter)?.Type === 'income' || filter === 'Összes'} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
+                <button className={displayMode === 'usage' ? 'active' : ''} disabled={categories.find(c => c.Name === filter)?.Type === 'invoice_only' || categories.find(c => c.Name === filter)?.Type === 'income' || filter === 'Összes' || filter === 'Összes kiadás'} onClick={() => setDisplayMode('usage')}>Fogyasztás</button>
                 <button className={displayMode === 'cost' ? 'active' : ''} onClick={() => setDisplayMode('cost')}>Költség</button>
               </div>
               
-              {/* --- MÓDOSÍTOTT VIEW TOGGLE A DÁTUMVÁLASZTÓKKAL --- */}
               <div className="view-toggle" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                 <button className={viewMode === 'monthly' ? 'active' : ''} onClick={() => setViewMode('monthly')}>Havi</button>
                 <button className={viewMode === 'annual' ? 'active' : ''} onClick={() => setViewMode('annual')}>Éves</button>
