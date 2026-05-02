@@ -245,21 +245,31 @@ function App() {
 
   // --- HANDLEREK ---
 
-  const handleAssetSave = async () => {
-    if (!newAsset.friendlyName) return alert("Adj nevet az eszköznek!");
+    const handleAssetSave = async () => {
+    if (!newAsset.friendlyName) return alert("Adj nevet az eszköznek / személynek!");
     const method = editingAssetId ? 'PUT' : 'POST';
     const url = editingAssetId ? `${BACKEND_URL}/api/assets/${editingAssetId}` : `${BACKEND_URL}/api/assets`;
-    const res = await fetch(url, {
-      method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-      body: JSON.stringify(newAsset)
-    });
-    if (res.ok) {
-      setEditingAssetId(null);
-      setNewAsset({ category: 'property', friendlyName: '', city: '', street: '', houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' });
-      setShowAssetManager(false);
-      fetchAll(user.token);
+    
+    try {
+      const res = await fetch(url, {
+        method, 
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+        body: JSON.stringify(newAsset)
+      });
+      
+      if (res.ok) {
+        setEditingAssetId(null);
+        setNewAsset({ category: 'property', friendlyName: '', city: '', street: '', houseNumber: '', plateNumber: '', fuelType: 'Benzin', area: '' });
+        setShowAssetManager(false);
+        fetchAll(user.token);
+      } else {
+        alert("Szerver hiba történt a mentés során. Ellenőrizd a backendet!");
+      }
+    } catch (error) {
+      alert("Hálózati hiba!");
     }
   };
+
 
   const handleCategorySave = async () => {
     if (!isAdmin || !newCategory.name) return;
