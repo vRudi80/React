@@ -616,7 +616,6 @@ function App() {
                 <div key={a.Id} className="asset-item">
                   <div className="asset-item-info">
                     <span>{a.Category === 'car' ? '🚗' : a.Category === 'person' ? '👤' : '🏠'} {a.FriendlyName}</span>
-                    <small>{a.Category === 'car' ? a.PlateNumber : a.Category === 'property' ? a.City : 'Személyes'}</small>
                   </div>
                   <button className="btn-edit-small" onClick={() => { 
                     setEditingAssetId(a.Id);
