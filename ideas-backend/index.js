@@ -24,6 +24,17 @@ const pool = mysql.createPool({
 
 // --- AUTENTIKÁCIÓ ÉS JOGOSULTSÁGOK ---
 async function verifyUser(req, res, next) {
+    // 1. Cron-job ellenőrzés (ha a fejlécben ott a titkos kulcs, azonnal továbbengedjük)
+    const cronKey = req.headers['x-cron-key'];
+    const SAFE_CRON_KEY = process.env.CRON_SECRET || "SzuperTitkosCronKulcs123_2026";
+    
+    if (cronKey && cronKey === SAFE_CRON_KEY) {
+        req.userId = "CRON_ADMIN"; // Fiktív ID
+        req.userEmail = "cron@rezsiapp.system";
+        return next();
+    }
+
+    // 2. Normál Google bejelentkezés ellenőrzése felhasználóknak
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).send('Nincs token!');
     
@@ -34,14 +45,15 @@ async function verifyUser(req, res, next) {
         req.userId = payload.sub;
         req.userEmail = payload.email;
         next();
-    } catch (err) { res.status(401).send('Érvénytelen munkamenet'); }
+    } catch (err) { 
+        res.status(401).send('Érvénytelen munkamenet'); 
+    }
 }
 
-async function canAccessData(requesterId, requesterEmail, targetUserId) {
-    if (requesterId === targetUserId) return true;
-    const [rows] = await pool.query('SELECT id FROM shares WHERE owner_id = ? AND shared_with_email = ?', [targetUserId, requesterEmail]);
-    return rows.length > 0;
-}
+// --- ÉBRENTARTÓ VÉGPONT (Opcionális, de a Cron-nak ez a legjobb) ---
+app.get('/ping', (req, res) => {
+    res.send('Szerver ébren van! 🚀');
+});
 
 // --- BELÉPÉS NAPLÓZÁSA ---
 app.post('/api/login-sync', verifyUser, async (req, res) => {
